@@ -5,7 +5,6 @@
 Config Config::load_from_file(const std::string& path) {
     Config config;
     config.llm_instructions = "Generate a commit message with a summary on the first line, then detailed description.";
-    config.api_key = "";
     config.backend = "openrouter";
     config.model = "anthropic/claude-3-haiku";
 
@@ -18,12 +17,14 @@ Config Config::load_from_file(const std::string& path) {
     while (std::getline(file, line)) {
         if (line.find("instructions=") == 0) {
             config.llm_instructions = line.substr(13);
-        } else if (line.find("api_key=") == 0) {
-            config.api_key = line.substr(8);
         } else if (line.find("backend=") == 0) {
             config.backend = line.substr(8);
         } else if (line.find("model=") == 0) {
             config.model = line.substr(6);
+        } else if (line.find("openrouter_api_key=") == 0) {
+            config.openrouter_api_key = line.substr(19);
+        } else if (line.find("zen_api_key=") == 0) {
+            config.zen_api_key = line.substr(12);
         }
     }
 

@@ -4,6 +4,10 @@
 #include <sstream>
 #include <stdexcept>
 
+void ZenBackend::set_api_key(const std::string& key) {
+    api_key = key;
+}
+
 std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -11,9 +15,8 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
     }
 
     std::string url = "https://opencode.ai/zen/api/v1/chat/completions"; // Assume this is the endpoint
-    std::string api_key = std::getenv("ZEN_API_KEY");
     if (api_key.empty()) {
-        throw std::runtime_error("ZEN_API_KEY not set");
+        throw std::runtime_error("API key not set");
     }
 
     std::string payload = R"(

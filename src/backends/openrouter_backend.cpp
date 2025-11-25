@@ -5,6 +5,10 @@
 #include <stdexcept>
 #include <nlohmann/json.hpp>
 
+void OpenRouterBackend::set_api_key(const std::string& key) {
+    api_key = key;
+}
+
 std::string OpenRouterBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -12,9 +16,8 @@ std::string OpenRouterBackend::generate_commit_message(const std::string& diff, 
     }
 
     std::string url = "https://openrouter.ai/api/v1/chat/completions";
-    std::string api_key = std::getenv("OPENROUTER_API_KEY");
     if (api_key.empty()) {
-        throw std::runtime_error("OPENROUTER_API_KEY not set");
+        throw std::runtime_error("API key not set");
     }
 
     std::string payload = R"(
@@ -71,9 +74,8 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
     }
 
     std::string url = "https://openrouter.ai/api/v1/models";
-    std::string api_key = std::getenv("OPENROUTER_API_KEY");
     if (api_key.empty()) {
-        throw std::runtime_error("OPENROUTER_API_KEY not set");
+        throw std::runtime_error("API key not set");
     }
 
     struct curl_slist* headers = nullptr;
@@ -118,9 +120,8 @@ std::string OpenRouterBackend::get_balance() {
     }
 
     std::string url = "https://openrouter.ai/api/v1/auth/key";
-    std::string api_key = std::getenv("OPENROUTER_API_KEY");
     if (api_key.empty()) {
-        throw std::runtime_error("OPENROUTER_API_KEY not set");
+        throw std::runtime_error("API key not set");
     }
 
     struct curl_slist* headers = nullptr;

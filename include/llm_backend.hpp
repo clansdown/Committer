@@ -20,6 +20,7 @@ struct Model {
 class LLMBackend {
 public:
     virtual ~LLMBackend() = default;
+    virtual void set_api_key(const std::string& key) = 0;
     virtual std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) = 0;
     virtual std::vector<Model> get_available_models() = 0;
     virtual std::string get_balance() = 0;
@@ -27,14 +28,20 @@ public:
 
 class OpenRouterBackend : public LLMBackend {
 public:
+    void set_api_key(const std::string& key) override;
     std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) override;
     std::vector<Model> get_available_models() override;
     std::string get_balance() override;
+private:
+    std::string api_key;
 };
 
 class ZenBackend : public LLMBackend {
 public:
+    void set_api_key(const std::string& key) override;
     std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) override;
     std::vector<Model> get_available_models() override;
     std::string get_balance() override;
+private:
+    std::string api_key;
 };
