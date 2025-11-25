@@ -4,9 +4,26 @@
 #include <string>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
+#include <cstring>
 #include "git_utils.hpp"
 #include "config.hpp"
 #include "llm_backend.hpp"
+
+std::string get_config_path() {
+    const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
+    std::string config_dir;
+    if (xdg_config && strlen(xdg_config) > 0) {
+        config_dir = xdg_config;
+    } else {
+        const char* home = std::getenv("HOME");
+        if (!home || strlen(home) == 0) {
+            throw std::runtime_error("HOME environment variable not set");
+        }
+        config_dir = std::string(home) + "/.config";
+    }
+    return config_dir + "/commit/config.txt";
+}
 
 int main(int argc, char** argv) {
     CLI::App app{"commit - Generate commit messages using LLM"};
@@ -16,7 +33,7 @@ int main(int argc, char** argv) {
     bool list_models = false;
     bool query_balance = false;
     std::string backend = "openrouter";
-    std::string config_path = "config.txt";
+    std::string config_path = get_config_path();
     std::string model = "";
 
     app.set_help_flag("--help", "Print help message");
@@ -45,6 +62,7 @@ int main(int argc, char** argv) {
         std::cin >> config_key;
         // save config
         config.backend = backend;
+        std::filesystem::create_directories(std::filesystem::path(config_path).parent_path());
         std::ofstream file(config_path);
         file << "backend=" << config.backend << "\n";
         file << "model=" << config.model << "\n";
