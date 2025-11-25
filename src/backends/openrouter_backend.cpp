@@ -120,7 +120,7 @@ std::string OpenRouterBackend::get_balance() {
         throw std::runtime_error("Failed to init curl");
     }
 
-    std::string url = "https://openrouter.ai/api/v1/auth/key";
+    std::string url = "https://openrouter.ai/api/v1/credits";
     if (api_key.empty()) {
         throw std::runtime_error("API key not set");
     }
@@ -146,8 +146,11 @@ std::string OpenRouterBackend::get_balance() {
 
     try {
         nlohmann::json j = nlohmann::json::parse(response);
-        if (j.contains("data") && j["data"].contains("balance") && !j["data"]["balance"].is_null()) {
-            double balance = j["data"]["balance"];
+        if (j.contains("data") && j["data"].contains("total_credits") && j["data"].contains("total_usage") &&
+            !j["data"]["total_credits"].is_null() && !j["data"]["total_usage"].is_null()) {
+            double total_credits = j["data"]["total_credits"];
+            double total_usage = j["data"]["total_usage"];
+            double balance = total_credits - total_usage;
             return "$" + std::to_string(balance);
         } else {
             std::cerr << "Balance query response: " << response << std::endl;
