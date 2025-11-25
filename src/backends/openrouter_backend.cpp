@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <nlohmann/json.hpp>
+#include <fstream>
 #include "llm_backend.hpp"
 
 void OpenRouterBackend::set_api_key(const std::string& key) {
@@ -22,20 +23,14 @@ std::string OpenRouterBackend::generate_commit_message(const std::string& diff, 
         throw std::runtime_error("API key not set");
     }
 
-    std::string payload = R"(
-    {
-        "model": ")" + model + R"(",
-        "messages": [
-            {
-                "role": "user",
-                "content": ")";
-    payload += instructions;
-    payload += R"(\n\nDiff:\n)";
-    payload += diff;
-    payload += R"("
-            }
-        ]
-    })";
+    nlohmann::json payload_json = {
+        {"model", model},
+        {"messages", {{
+            {"role", "user"},
+            {"content", instructions + "\n\nDiff:\n" + diff}
+        }}}
+    };
+    std::string payload = payload_json.dump();
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
@@ -58,15 +53,31 @@ std::string OpenRouterBackend::generate_commit_message(const std::string& diff, 
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    // Parse response, assume JSON, extract message
-    // For simplicity, find "content": "..." 
-    size_t pos = response.find("\"content\": \"");
-    if (pos == std::string::npos) {
-        throw std::runtime_error("Failed to parse response");
+    return handle_chat_response(response, payload);
+}
+
+std::string OpenRouterBackend::handle_chat_response(const std::string& response, const std::string& payload) {
+    try {
+        nlohmann::json j = nlohmann::json::parse(response);
+        if (j.contains("error")) {
+            std::string error_msg = j["error"]["message"];
+            try {
+                std::ofstream query_file("/tmp/query.txt");
+                query_file << payload;
+                query_file.close();
+                std::cerr << "Query saved to /tmp/query.txt" << std::endl;
+            } catch (const std::exception& file_e) {
+                std::cerr << "Warning: Failed to save query to /tmp/query.txt: " << file_e.what() << std::endl;
+            }
+            std::cerr << "API error: " << error_msg << std::endl;
+            throw std::runtime_error("API error: " + error_msg);
+        }
+        return j["choices"][0]["message"]["content"];
+    } catch (const nlohmann::json::exception& e) {
+        std::cerr << "JSON parsing error in commit message generation: " << e.what() << std::endl;
+        std::cerr << "Full response: " << response << std::endl;
+        throw;
     }
-    pos += 12;
-    size_t end = response.find("\"", pos);
-    return response.substr(pos, end - pos);
 }
 
 std::vector<Model> OpenRouterBackend::get_available_models() {

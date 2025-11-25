@@ -34,6 +34,7 @@ public:
     std::string get_balance() override;
 private:
     std::string api_key;
+    std::string handle_chat_response(const std::string& response, const std::string& payload);
 };
 
 class ZenBackend : public LLMBackend {
@@ -44,4 +45,5 @@ public:
     std::string get_balance() override;
 private:
     std::string api_key;
+    std::string handle_chat_response(const std::string& response, const std::string& payload);
 };

@@ -1,0 +1,2 @@
+To build the standard cache:
+g++-15 -std=c++23 -fmodules -fsearch-include-path bits/std.cc -c

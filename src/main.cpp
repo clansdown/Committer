@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     bool no_add = false;
     bool list_models = false;
     bool query_balance = false;
+    bool dry_run = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -39,6 +40,7 @@ int main(int argc, char** argv) {
     app.set_help_flag("--help", "Print help message");
     app.add_flag("--add", add_files, "Add files to staging before commit");
     app.add_flag("--no-add", no_add, "Do not add files, assume already staged");
+    app.add_flag("--dry-run", dry_run, "Generate commit message and print it without committing");
     app.add_flag("--list-models", list_models, "List available models for the selected backend");
     app.add_flag("--query-balance", query_balance, "Query available balance from the backend");
     app.add_option("--backend", backend, "LLM backend: openrouter or zen");
@@ -47,7 +49,8 @@ int main(int argc, char** argv) {
 
     CLI11_PARSE(app, argc, argv);
 
-    auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
+    try {
+        auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
         std::string env_name = (backend == "openrouter") ? "OPENROUTER_API_KEY" : "ZEN_API_KEY";
         std::string& config_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
         if (!config_key.empty()) {
@@ -107,18 +110,32 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (add_files) {
-        GitUtils::add_files();
-    } else if (!no_add) {
-        std::cout << "Add all files to staging? (y/n): ";
-        char response;
-        std::cin >> response;
-        if (response == 'y' || response == 'Y') {
-            GitUtils::add_files();
+    bool should_add = add_files;
+    if (!no_add && !add_files) {
+        auto unstaged = GitUtils::get_unstaged_files();
+        if (!unstaged.empty()) {
+            std::cout << "Unstaged files:\n";
+            for (const auto& f : unstaged) {
+                std::cout << f << "\n";
+            }
+            std::cout << "Add all to staging? [Y/n]: ";
+            std::string response;
+            std::getline(std::cin, response);
+            should_add = response.empty() || (response.size() > 0 && (response[0] == 'y' || response[0] == 'Y'));
         }
     }
+    if (!dry_run && should_add) {
+        GitUtils::add_files();
+    } else if (dry_run && should_add) {
+        std::cout << "Would add files to staging\n";
+    }
 
-    std::string diff = GitUtils::get_diff();
+    std::string diff;
+    if (dry_run && should_add) {
+        diff = GitUtils::get_full_diff();
+    } else {
+        diff = GitUtils::get_diff(true);
+    }
     if (diff.empty()) {
         std::cout << "No changes to commit\n";
         return 0;
@@ -137,9 +154,19 @@ int main(int argc, char** argv) {
 
     std::string commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
 
-    GitUtils::commit(commit_msg);
-
-    std::cout << "Committed with message:\n" << commit_msg << std::endl;
+    if (dry_run) {
+        std::cout << "[DRY RUN] Would commit with message:\n" << commit_msg << std::endl;
+    } else {
+        GitUtils::commit(commit_msg);
+        std::cout << "Committed with message:\n" << commit_msg << std::endl;
+    }
 
     return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "Unknown error occurred" << std::endl;
+        return 1;
+    }
 }
