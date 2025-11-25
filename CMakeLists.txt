@@ -20,6 +20,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(cli11)
 
+# Add nlohmann/json
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.2
+)
+FetchContent_MakeAvailable(json)
+
 # Source files
 set(SOURCES
     src/main.cpp
@@ -33,7 +41,7 @@ set(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} ${LIBCURL_LIBRARIES} CLI11::CLI11)
+target_link_libraries(${PROJECT_NAME} ${LIBCURL_LIBRARIES} CLI11::CLI11 nlohmann_json::nlohmann_json)
 
 # Compiler flags
 target_compile_options(${PROJECT_NAME} PRIVATE ${LIBCURL_CFLAGS_OTHER})

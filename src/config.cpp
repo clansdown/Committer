@@ -7,6 +7,7 @@ Config Config::load_from_file(const std::string& path) {
     config.llm_instructions = "Generate a commit message with a summary on the first line, then detailed description.";
     config.api_key = "";
     config.backend = "openrouter";
+    config.model = "anthropic/claude-3-haiku";
 
     std::ifstream file(path);
     if (!file) {
@@ -21,6 +22,8 @@ Config Config::load_from_file(const std::string& path) {
             config.api_key = line.substr(8);
         } else if (line.find("backend=") == 0) {
             config.backend = line.substr(8);
+        } else if (line.find("model=") == 0) {
+            config.model = line.substr(6);
         }
     }
 

@@ -4,7 +4,7 @@
 #include <sstream>
 #include <stdexcept>
 
-std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions) {
+std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) {
     CURL* curl = curl_easy_init();
     if (!curl) {
         throw std::runtime_error("Failed to init curl");
@@ -18,7 +18,7 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
 
     std::string payload = R"(
     {
-        "model": "zen-model",
+        "model": ")" + model + R"(",
         "messages": [
             {
                 "role": "user",
@@ -60,4 +60,16 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
     pos += 12;
     size_t end = response.find("\"", pos);
     return response.substr(pos, end - pos);
+}
+
+std::vector<Model> ZenBackend::get_available_models() {
+    // Hardcoded for demo, since Zen is fictional
+    return {
+        {"zen-fast", "Zen Fast Model", "$0.05/1K input, $0.15/1K output", "A fast and efficient model for quick commits."},
+        {"zen-pro", "Zen Pro Model", "$0.10/1K input, $0.30/1K output", "A more powerful model for detailed commit messages."}
+    };
+}
+
+std::string ZenBackend::get_balance() {
+    throw std::runtime_error("Balance query not supported for Zen backend");
 }

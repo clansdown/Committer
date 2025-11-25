@@ -6,6 +6,7 @@ struct Config {
     std::string llm_instructions;
     std::string api_key;
     std::string backend;
+    std::string model;
 
     static Config load_from_file(const std::string& path);
 };

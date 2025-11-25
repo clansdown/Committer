@@ -11,13 +11,20 @@ int main(int argc, char** argv) {
 
     bool add_files = false;
     bool no_add = false;
+    bool list_models = false;
+    bool query_balance = false;
     std::string backend = "openrouter";
     std::string config_path = "config.txt";
+    std::string model = "";
 
+    app.set_help_flag("--help", "Print help message");
     app.add_flag("--add", add_files, "Add files to staging before commit");
     app.add_flag("--no-add", no_add, "Do not add files, assume already staged");
+    app.add_flag("--list-models", list_models, "List available models for the selected backend");
+    app.add_flag("--query-balance", query_balance, "Query available balance from the backend");
     app.add_option("--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
+    app.add_option("--model", model, "LLM model to use");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -27,6 +34,37 @@ int main(int argc, char** argv) {
     }
 
     Config config = Config::load_from_file(config_path);
+
+    if (!model.empty()) {
+        config.model = model;
+    } else {
+        model = config.model;
+    }
+
+    if (list_models || query_balance) {
+        std::unique_ptr<LLMBackend> llm;
+        if (backend == "openrouter") {
+            llm = std::make_unique<OpenRouterBackend>();
+        } else if (backend == "zen") {
+            llm = std::make_unique<ZenBackend>();
+        } else {
+            std::cerr << "Unknown backend\n";
+            return 1;
+        }
+        if (list_models) {
+            auto models = llm->get_available_models();
+            for (const auto& m : models) {
+                std::cout << "ID: " << m.id << "\n";
+                std::cout << "Name: " << m.name << "\n";
+                std::cout << "Pricing: " << m.pricing << "\n";
+                std::cout << "Description: " << m.description << "\n\n";
+            }
+        } else if (query_balance) {
+            std::string balance = llm->get_balance();
+            std::cout << "Available balance: " << balance << std::endl;
+        }
+        return 0;
+    }
 
     if (add_files) {
         GitUtils::add_files();
@@ -55,7 +93,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string commit_msg = llm->generate_commit_message(diff, config.llm_instructions);
+    std::string commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
 
     GitUtils::commit(commit_msg);
 
