@@ -16,8 +16,8 @@ int main(int argc, char** argv) {
 
     app.add_flag("--add", add_files, "Add files to staging before commit");
     app.add_flag("--no-add", no_add, "Do not add files, assume already staged");
-    app.add_option("--backend", backend, "LLM backend: openrouter or zen", true);
-    app.add_option("--config", config_path, "Path to config file", true);
+    app.add_option("--backend", backend, "LLM backend: openrouter or zen");
+    app.add_option("--config", config_path, "Path to config file");
 
     CLI11_PARSE(app, argc, argv);
 

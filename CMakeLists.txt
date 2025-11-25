@@ -25,7 +25,6 @@ set(SOURCES
     src/main.cpp
     src/git_utils.cpp
     src/config.cpp
-    src/backends/llm_backend.cpp
     src/backends/openrouter_backend.cpp
     src/backends/zen_backend.cpp
 )

@@ -13,7 +13,8 @@ bool GitUtils::is_git_repo() {
 std::string GitUtils::get_diff() {
     std::array<char, 128> buffer;
     std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen("git diff --cached", "r"), pclose);
+    auto deleter = [](FILE* f) { pclose(f); };
+    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git diff --cached", "r"), deleter);
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
     }

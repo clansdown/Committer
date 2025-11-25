@@ -4,11 +4,6 @@
 #include <sstream>
 #include <stdexcept>
 
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
 std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions) {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -27,7 +22,11 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
         "messages": [
             {
                 "role": "user",
-                "content": ")" + instructions + R"(\n\nDiff:\n)" + diff + R"("
+                "content": ")";
+    payload += instructions;
+    payload += R"(\n\nDiff:\n)";
+    payload += diff;
+    payload += R"("
             }
         ]
     })";
