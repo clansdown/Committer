@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <nlohmann/json.hpp>
 #include "llm_backend.hpp"
 
@@ -98,20 +99,26 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    nlohmann::json j = nlohmann::json::parse(response);
-    std::vector<Model> models;
-    for (const auto& item : j["data"]) {
-        Model m;
-        m.id = item["id"];
-        m.name = item["name"];
-        m.description = item["description"];
+    try {
+        nlohmann::json j = nlohmann::json::parse(response);
+        std::vector<Model> models;
+        for (const auto& item : j["data"]) {
+            Model m;
+            m.id = item["id"];
+            m.name = item["name"];
+            m.description = item["description"];
         auto pricing = item["pricing"];
-        double prompt = pricing["prompt"];
-        double completion = pricing["completion"];
+        double prompt = std::stod(pricing.value("prompt", "0.0"));
+        double completion = std::stod(pricing.value("completion", "0.0"));
         m.pricing = "$" + std::to_string(prompt * 1000) + "/1K input, $" + std::to_string(completion * 1000) + "/1K output";
-        models.push_back(m);
+            models.push_back(m);
+        }
+        return models;
+    } catch (const nlohmann::json::exception& e) {
+        std::cerr << "JSON parsing error in models query: " << e.what() << std::endl;
+        std::cerr << "Full response: " << response << std::endl;
+        throw;
     }
-    return models;
 }
 
 std::string OpenRouterBackend::get_balance() {
