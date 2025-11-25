@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
+#include "llm_backend.hpp"
 
 void OpenRouterBackend::set_api_key(const std::string& key) {
     api_key = key;
@@ -143,7 +144,18 @@ std::string OpenRouterBackend::get_balance() {
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    nlohmann::json j = nlohmann::json::parse(response);
-    double balance = j["data"]["balance"];
-    return "$" + std::to_string(balance);
+    try {
+        nlohmann::json j = nlohmann::json::parse(response);
+        if (j.contains("data") && j["data"].contains("balance") && !j["data"]["balance"].is_null()) {
+            double balance = j["data"]["balance"];
+            return "$" + std::to_string(balance);
+        } else {
+            std::cerr << "Balance query response: " << response << std::endl;
+            throw std::runtime_error("Balance data not available or null in response");
+        }
+    } catch (const nlohmann::json::exception& e) {
+        std::cerr << "JSON parsing error in balance query: " << e.what() << std::endl;
+        std::cerr << "Full response: " << response << std::endl;
+        throw;
+    }
 }
