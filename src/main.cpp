@@ -12,6 +12,22 @@
 #include "spinner.hpp"
 #include "colors.hpp"
 
+std::string clean_commit_message(const std::string& msg) {
+    std::string cleaned = msg;
+    // Remove surrounding ```
+    if (cleaned.size() >= 6 && cleaned.substr(0, 3) == "```" && cleaned.substr(cleaned.size() - 3) == "```") {
+        cleaned = cleaned.substr(3, cleaned.size() - 6);
+    }
+    // Remove "diff" at start and end if present
+    if (cleaned.size() >= 8 && cleaned.substr(0, 4) == "diff" && cleaned.substr(cleaned.size() - 4) == "diff") {
+        cleaned = cleaned.substr(4, cleaned.size() - 8);
+    }
+    // Trim whitespace
+    cleaned.erase(cleaned.begin(), std::find_if(cleaned.begin(), cleaned.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+    cleaned.erase(std::find_if(cleaned.rbegin(), cleaned.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), cleaned.end());
+    return cleaned;
+}
+
 std::string get_config_path() {
     const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
     std::string config_dir;
@@ -172,11 +188,11 @@ int main(int argc, char** argv) {
             GitUtils::add_files(files_to_add);
             auto [hash, output] = GitUtils::commit_with_output(commit_msg);
             std::cout << std::endl;
-            std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET << std::endl;
-            std::cout << commit_msg << std::endl;
+            std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET;
             if (!hash.empty()) {
-                std::cout << Colors::BLUE << "Commit: " << hash << Colors::RESET << std::endl;
+                std::cout << " " << Colors::BLUE << hash << Colors::RESET;
             }
+            std::cout << " " << clean_commit_message(commit_msg) << std::endl;
         } catch (const std::runtime_error& e) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
