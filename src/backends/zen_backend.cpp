@@ -16,18 +16,12 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
         throw std::runtime_error("Failed to init curl");
     }
 
-    std::string url = "https://opencode.ai/zen/api/v1/chat/completions"; // Assume this is the endpoint
+    std::string url = get_endpoint_for_model(model);
     if (api_key.empty()) {
         throw std::runtime_error("API key not set");
     }
 
-    nlohmann::json payload_json = {
-        {"model", model},
-        {"messages", {{
-            {"role", "user"},
-            {"content", instructions + "\n\nDiff:\n" + diff}
-        }}}
-    };
+    nlohmann::json payload_json = build_payload_for_model(model, instructions, diff);
     std::string payload = payload_json.dump();
 
     struct curl_slist* headers = nullptr;
@@ -70,7 +64,16 @@ std::string ZenBackend::handle_chat_response(const std::string& response, const 
             std::cerr << "API error: " << error_msg << std::endl;
             throw std::runtime_error("API error: " + error_msg);
         }
-        return j["choices"][0]["message"]["content"];
+        // Try OpenAI format first
+        if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
+            return j["choices"][0]["message"]["content"];
+        }
+        // Try Anthropic format
+        if (j.contains("content") && j["content"].is_array() && !j["content"].empty()) {
+            return j["content"][0]["text"];
+        }
+        // Fallback
+        throw std::runtime_error("Unexpected response format");
     } catch (const nlohmann::json::exception& e) {
         std::cerr << "JSON parsing error in commit message generation: " << e.what() << std::endl;
         std::cerr << "Full response: " << response << std::endl;
@@ -79,13 +82,124 @@ std::string ZenBackend::handle_chat_response(const std::string& response, const 
 }
 
 std::vector<Model> ZenBackend::get_available_models() {
-    // Hardcoded for demo, since Zen is fictional
-    return {
-        {"zen-fast", "Zen Fast Model", "$0.05/1K input, $0.15/1K output", "A fast and efficient model for quick commits."},
-        {"zen-pro", "Zen Pro Model", "$0.10/1K input, $0.30/1K output", "A more powerful model for detailed commit messages."}
-    };
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        throw std::runtime_error("Failed to init curl");
+    }
+
+    std::string url = "https://opencode.ai/zen/v1/models";
+    if (api_key.empty()) {
+        throw std::runtime_error("API key not set");
+    }
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(headers);
+        throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
+    }
+
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+
+    return parse_models_response(response);
 }
 
 std::string ZenBackend::get_balance() {
     throw std::runtime_error("Balance query not supported for Zen backend");
+}
+
+std::vector<Model> ZenBackend::parse_models_response(const std::string& response) {
+    std::vector<Model> models;
+    try {
+        nlohmann::json j = nlohmann::json::parse(response);
+        if (j.contains("error")) {
+            handle_api_error(response, j["error"]["message"]);
+        }
+        if (!j.contains("data") || !j["data"].is_array()) {
+            handle_api_error(response, "Expected JSON object with 'data' array");
+        }
+        for (const auto& model_json : j["data"]) {
+            if (!model_json.is_object()) continue;
+            std::string id = model_json.at("id");
+            std::string name = model_json.value("name", id);
+            std::string pricing = model_json.value("pricing", get_pricing_for_model(id));
+            std::string description = model_json.value("description", "Model for coding agents.");
+            models.push_back({id, name, pricing, description});
+        }
+    } catch (const nlohmann::json::exception& e) {
+        handle_api_error(response, "JSON parsing error: " + std::string(e.what()));
+    }
+    return models;
+}
+
+void ZenBackend::handle_api_error(const std::string& response, const std::string& error_msg) {
+    std::cerr << "Zen API error: " << error_msg << std::endl;
+    if (response.size() > 1024) {
+        try {
+            std::ofstream error_file("/tmp/zen_models_error.txt");
+            error_file << response;
+            error_file.close();
+            std::cerr << "Full response saved to /tmp/zen_models_error.txt" << std::endl;
+        } catch (const std::exception& file_e) {
+            std::cerr << "Warning: Failed to save response to /tmp/zen_models_error.txt: " << file_e.what() << std::endl;
+            std::cerr << "Response: " << response << std::endl;
+        }
+    } else {
+        std::cerr << "Response: " << response << std::endl;
+    }
+    throw std::runtime_error("Zen API error: " + error_msg);
+}
+
+std::string ZenBackend::get_pricing_for_model(const std::string& id) {
+    // Hardcoded fallback from docs
+    if (id == "gpt-5.1" || id == "gpt-5.1-codex" || id == "gpt-5" || id == "gpt-5-codex") return "$1.07/1M input, $8.50/1M output";
+    if (id == "gpt-5-nano") return "Free";
+    if (id == "claude-sonnet-4-5") return "$3.00/1M input, $15.00/1M output (≤200K), $6.00/1M input, $22.50/1M output (>200K)";
+    // Add more as needed...
+    return "Pricing not available";
+}
+
+std::string ZenBackend::get_endpoint_for_model(const std::string& model) {
+    if (model.find("claude-") == 0) {
+        return "https://opencode.ai/zen/v1/messages";
+    } else if (model.find("gemini-") == 0) {
+        return "https://opencode.ai/zen/v1/models/" + model;
+    } else {
+        // Default to OpenAI compatible
+        return "https://opencode.ai/zen/v1/chat/completions";
+    }
+}
+
+nlohmann::json ZenBackend::build_payload_for_model(const std::string& model, const std::string& instructions, const std::string& diff) {
+    if (model.find("claude-") == 0) {
+        // Anthropic format
+        return {
+            {"model", model},
+            {"messages", {{
+                {"role", "user"},
+                {"content", instructions + "\n\nDiff:\n" + diff}
+            }}},
+            {"max_tokens", 1000}
+        };
+    } else {
+        // OpenAI format
+        return {
+            {"model", model},
+            {"messages", {{
+                {"role", "user"},
+                {"content", instructions + "\n\nDiff:\n" + diff}
+            }}}
+        };
+    }
 }

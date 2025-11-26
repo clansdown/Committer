@@ -46,4 +46,9 @@ public:
 private:
     std::string api_key;
     std::string handle_chat_response(const std::string& response, const std::string& payload);
+    std::vector<Model> parse_models_response(const std::string& response);
+    void handle_api_error(const std::string& response, const std::string& error_msg);
+    std::string get_pricing_for_model(const std::string& id);
+    std::string get_endpoint_for_model(const std::string& model);
+    nlohmann::json build_payload_for_model(const std::string& model, const std::string& instructions, const std::string& diff);
 };
