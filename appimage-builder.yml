@@ -1,7 +1,7 @@
 version: 1
 
 AppDir:
-  path: ./build/AppDir
+  path: ./AppDir
 
   app_info:
     id: commit
@@ -23,8 +23,8 @@ AppDir:
 
   files:
     include:
-      - ../resources/commit.desktop:usr/share/applications/commit.desktop
-      - ../resources/commit.png:usr/share/icons/hicolor/128x128/apps/commit.png
+      - ../../resources/commit.desktop:usr/share/applications/commit.desktop
+      - ../../resources/commit.png:usr/share/icons/hicolor/128x128/apps/commit.png
     exclude:
       - usr/share/man
       - usr/share/doc
@@ -34,7 +34,7 @@ AppDir:
 
   script:
     - mkdir -p $TARGET_APPDIR/usr/bin
-    - cp commit $TARGET_APPDIR/usr/bin/commit
+    - cp ../../build/commit $TARGET_APPDIR/usr/bin/commit
 
 AppImage:
   arch: x86_64

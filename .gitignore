@@ -42,5 +42,6 @@
 
 # Build directory and error log
 build/
+package/
 errors.txt
 .aider*

@@ -5,16 +5,20 @@ set -e
 # Build first
 ./scripts/build.sh
 
-cd build
+# Create package directory and enter it
+mkdir -p package
+cd package
 
-# Create package directory and venv
-mkdir -p ../package
-uv venv ../package/.venv
+# Create venv
+uv venv .venv
 
-# Install appimage-builder in the venv
+# Install appimage-builder
 uv pip install appimage-builder
 
-# Run appimage-builder using uv run with the venv's Python
-uv run --python ../package/.venv/bin/python appimage-builder --recipe ../appimage-builder.yml
+# Copy the recipe
+cp ../appimage-builder.yml .
 
-echo "AppImage created"
+# Run appimage-builder
+uv run appimage-builder --recipe appimage-builder.yml
+
+echo "AppImage created in package/Committer-1.0.0-x86_64.AppImage"
