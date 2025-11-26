@@ -93,6 +93,12 @@ int main(int argc, char** argv) {
     };
 
     Config config = Config::load_from_file(config_path);
+
+    // Auto-select backend if default and only one has a key
+    if (backend == "openrouter" && config.openrouter_api_key.empty() && !config.zen_api_key.empty()) {
+        backend = "zen";
+    }
+
     get_api_key(backend, config, config_path);
     std::string api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
 
