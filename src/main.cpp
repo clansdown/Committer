@@ -10,6 +10,7 @@
 #include "config.hpp"
 #include "llm_backend.hpp"
 #include "spinner.hpp"
+#include "colors.hpp"
 
 std::string get_config_path() {
     const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
@@ -62,7 +63,7 @@ int main(int argc, char** argv) {
             config_key = env;
             return;
         }
-        std::cout << "Enter API key for " << backend << ": ";
+        std::cout << Colors::YELLOW << "Enter API key for " << backend << ": " << Colors::RESET;
         std::cin >> config_key;
         // save config
         config.backend = backend;
@@ -115,11 +116,11 @@ int main(int argc, char** argv) {
     if (!no_add && !add_files) {
         auto unstaged = GitUtils::get_unstaged_files();
         if (!unstaged.empty()) {
-            std::cout << "Unstaged files:\n";
+            std::cout << Colors::GREEN << "Unstaged files:" << Colors::RESET << "\n";
             for (const auto& f : unstaged) {
                 std::cout << f << "\n";
             }
-            std::cout << "Add all to staging? [Y/n]: ";
+            std::cout << Colors::YELLOW << "Add all to staging? [Y/n]: " << Colors::RESET;
             std::string response;
             std::getline(std::cin, response);
             should_add = response.empty() || (response.size() > 0 && (response[0] == 'y' || response[0] == 'Y'));
@@ -160,10 +161,12 @@ int main(int argc, char** argv) {
     }
 
     if (dry_run) {
-        std::cout << "[DRY RUN] Would commit with message:\n" << commit_msg << std::endl;
+        std::cout << Colors::GREEN << "[DRY RUN] Would commit with message:" << Colors::RESET << std::endl;
+        std::cout << commit_msg << std::endl;
     } else {
         GitUtils::commit(commit_msg);
-        std::cout << "Committed with message:\n" << commit_msg << std::endl;
+        std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET << std::endl;
+        std::cout << commit_msg << std::endl;
     }
 
     return 0;
