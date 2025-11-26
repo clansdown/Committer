@@ -188,11 +188,11 @@ int main(int argc, char** argv) {
             GitUtils::add_files(files_to_add);
             auto [hash, output] = GitUtils::commit_with_output(commit_msg);
             std::cout << std::endl;
-            std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET;
             if (!hash.empty()) {
-                std::cout << " " << Colors::BLUE << hash << Colors::RESET;
+                std::cout << Colors::BLUE << hash << Colors::RESET << " ";
             }
-            std::cout << " " << clean_commit_message(commit_msg) << std::endl;
+            std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET << std::endl;
+            std::cout << clean_commit_message(commit_msg) << std::endl;
         } catch (const std::runtime_error& e) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
