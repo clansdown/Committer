@@ -56,14 +56,14 @@ int main(int argc, char** argv) {
     std::string model = "";
 
     app.set_help_flag("--help", "Print help message");
-    app.add_flag("--add", add_files, "Add files to staging before commit");
-    app.add_flag("--no-add", no_add, "Do not add files, assume already staged");
+    app.add_flag("-a,--add", add_files, "Add files to staging before commit");
+    app.add_flag("-n,--no-add", no_add, "Do not add files, assume already staged");
     app.add_flag("--dry-run", dry_run, "Generate commit message and print it without committing");
     app.add_flag("--list-models", list_models, "List available models for the selected backend");
-    app.add_flag("--query-balance", query_balance, "Query available balance from the backend");
-    app.add_option("--backend", backend, "LLM backend: openrouter or zen");
+    app.add_flag("-q,--query-balance", query_balance, "Query available balance from the backend");
+    app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
-    app.add_option("--model", model, "LLM model to use");
+    app.add_option("-m,--model", model, "LLM model to use");
 
     CLI11_PARSE(app, argc, argv);
 
