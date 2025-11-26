@@ -18,6 +18,9 @@ uv pip install appimage-builder
 # Copy the recipe
 cp ../appimage-builder.yml .
 
+# Set VERSION for template substitution
+export VERSION=1.0.0
+
 # Run appimage-builder
 uv run appimage-builder --recipe appimage-builder.yml
 

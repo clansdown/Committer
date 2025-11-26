@@ -11,3 +11,5 @@ struct Config {
 
     static Config load_from_file(const std::string& path);
 };
+
+void configure_app(const std::string& config_path);

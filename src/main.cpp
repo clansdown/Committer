@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
     bool list_models = false;
     bool query_balance = false;
     bool dry_run = false;
+    bool configure = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -61,11 +62,19 @@ int main(int argc, char** argv) {
     app.add_flag("--dry-run", dry_run, "Generate commit message and print it without committing");
     app.add_flag("--list-models", list_models, "List available models for the selected backend");
     app.add_flag("-q,--query-balance", query_balance, "Query available balance from the backend");
+    app.add_flag("--configure", configure, "Configure the application interactively");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
 
     CLI11_PARSE(app, argc, argv);
+
+    if (configure || !std::filesystem::exists(config_path)) {
+        configure_app(config_path);
+        if (configure) {
+            return 0;
+        }
+    }
 
     try {
         auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
@@ -135,6 +144,7 @@ int main(int argc, char** argv) {
     }
 
     auto tracked_modified = GitUtils::get_tracked_modified_files();
+    auto unstaged_modified = GitUtils::get_unstaged_files();
     bool should_add_untracked = add_files;
     if (!no_add && !add_files) {
         auto untracked = GitUtils::get_untracked_files();
@@ -151,6 +161,7 @@ int main(int argc, char** argv) {
     }
 
     std::vector<std::string> files_to_add = tracked_modified;
+    files_to_add.insert(files_to_add.end(), unstaged_modified.begin(), unstaged_modified.end());
     if (should_add_untracked) {
         auto untracked = GitUtils::get_untracked_files();
         files_to_add.insert(files_to_add.end(), untracked.begin(), untracked.end());

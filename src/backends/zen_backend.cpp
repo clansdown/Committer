@@ -39,6 +39,7 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
 
@@ -106,6 +107,7 @@ std::vector<Model> ZenBackend::get_available_models() {
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
 

@@ -15,8 +15,8 @@ A utility to generate commit messages using LLMs for git repositories.
 
 - CMake 3.20+
 - libcurl
+- libgit2
 - C++23 compiler
-- git (system command)
 
 ## Build
 

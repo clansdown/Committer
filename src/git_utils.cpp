@@ -8,235 +8,329 @@
 #include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <git2.h>
 
 bool GitUtils::is_git_repo() {
-    return system("git rev-parse --git-dir > /dev/null 2>&1") == 0;
+    git_libgit2_init();
+    git_buf buf = {0};
+    int error = git_repository_discover(&buf, ".", 0, NULL);
+    if (error == 0) {
+        git_buf_dispose(&buf);
+        return true;
+    }
+    git_buf_dispose(&buf);
+    return false;
 }
 
 std::string GitUtils::get_repo_root() {
-    std::array<char, 128> buffer;
-    std::string result;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git rev-parse --show-toplevel 2>/dev/null", "r"), deleter);
-    if (!pipe) return "";
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        return "";
     }
-    if (!result.empty() && result.back() == '\n') result.pop_back();
+    const char *workdir = git_repository_workdir(repo);
+    std::string result = workdir ? workdir : "";
+    git_repository_free(repo);
     return result;
 }
 
 std::string GitUtils::get_diff(bool cached) {
-    std::string cmd = "git diff";
-    if (cached) cmd += " --cached";
-    std::array<char, 128> buffer;
-    std::string result;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen(cmd.c_str(), "r"), deleter);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
+
+    git_diff *diff = nullptr;
+    if (cached) {
+        // index vs HEAD
+        git_index *index = nullptr;
+        git_repository_index(&index, repo);
+        git_tree *head_tree = nullptr;
+        git_reference *head_ref = nullptr;
+        git_repository_head(&head_ref, repo);
+        git_commit *head_commit = nullptr;
+        git_reference_peel((git_object **)&head_commit, head_ref, GIT_OBJECT_COMMIT);
+        git_commit_tree(&head_tree, head_commit);
+        error = git_diff_tree_to_index(&diff, repo, head_tree, index, nullptr);
+        git_index_free(index);
+        git_tree_free(head_tree);
+        git_commit_free(head_commit);
+        git_reference_free(head_ref);
+    } else {
+        // working dir vs index
+        error = git_diff_index_to_workdir(&diff, repo, nullptr, nullptr);
     }
+    if (error != 0) {
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to create diff");
+    }
+
+    git_buf buf = {0};
+    error = git_diff_to_buf(&buf, diff, GIT_DIFF_FORMAT_PATCH);
+    std::string result = buf.ptr ? buf.ptr : "";
+    git_buf_dispose(&buf);
+    git_diff_free(diff);
+    git_repository_free(repo);
     return result;
 }
 
 std::string GitUtils::get_full_diff() {
-    std::array<char, 128> buffer;
-    std::string result;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git diff HEAD", "r"), deleter);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
+
+    git_tree *head_tree = nullptr;
+    git_reference *head_ref = nullptr;
+    git_repository_head(&head_ref, repo);
+    git_commit *head_commit = nullptr;
+    git_reference_peel((git_object **)&head_commit, head_ref, GIT_OBJECT_COMMIT);
+    git_commit_tree(&head_tree, head_commit);
+
+    git_diff *diff = nullptr;
+    error = git_diff_tree_to_workdir(&diff, repo, head_tree, nullptr);
+    if (error != 0) {
+        git_tree_free(head_tree);
+        git_commit_free(head_commit);
+        git_reference_free(head_ref);
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to create diff");
     }
+
+    git_buf buf = {0};
+    error = git_diff_to_buf(&buf, diff, GIT_DIFF_FORMAT_PATCH);
+    std::string result = buf.ptr ? buf.ptr : "";
+    git_buf_dispose(&buf);
+    git_diff_free(diff);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    git_reference_free(head_ref);
+    git_repository_free(repo);
     return result;
 }
 
 std::vector<std::string> GitUtils::get_unstaged_files() {
-    std::array<char, 128> buffer;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git status --porcelain", "r"), deleter);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
+
+    git_status_list *status_list = nullptr;
+    error = git_status_list_new(&status_list, repo, nullptr);
+    if (error != 0) {
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to get status");
+    }
+
     std::vector<std::string> files;
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        std::string line = buffer.data();
-        if (line.size() > 3 && ((line[0] == 'M' && line[1] == ' ') || (line[0] == '?' && line[1] == '?'))) {
-            size_t space = line.find(' ', 2);
-            if (space != std::string::npos) {
-                std::string file = line.substr(space + 1);
-                if (!file.empty() && file.back() == '\n') file.pop_back();
-                files.push_back(file);
-            }
+    size_t count = git_status_list_entrycount(status_list);
+    for (size_t i = 0; i < count; ++i) {
+        const git_status_entry *entry = git_status_byindex(status_list, i);
+        if (entry->status & GIT_STATUS_WT_MODIFIED) {
+            files.push_back(entry->index_to_workdir->new_file.path);
         }
     }
+    git_status_list_free(status_list);
+    git_repository_free(repo);
     return files;
 }
 
 std::vector<std::string> GitUtils::get_tracked_modified_files() {
-    std::array<char, 128> buffer;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git status --porcelain", "r"), deleter);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
+
+    git_status_list *status_list = nullptr;
+    error = git_status_list_new(&status_list, repo, nullptr);
+    if (error != 0) {
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to get status");
+    }
+
     std::vector<std::string> files;
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        std::string line = buffer.data();
-        if (line.size() > 1 && line[1] == 'M') {
-            size_t space = line.find(' ', 2);
-            if (space != std::string::npos) {
-                std::string file = line.substr(space + 1);
-                if (!file.empty() && file.back() == '\n') file.pop_back();
-                files.push_back(file);
-            }
+    size_t count = git_status_list_entrycount(status_list);
+    for (size_t i = 0; i < count; ++i) {
+        const git_status_entry *entry = git_status_byindex(status_list, i);
+        if (entry->status & GIT_STATUS_INDEX_MODIFIED) {
+            files.push_back(entry->head_to_index->new_file.path);
         }
     }
+    git_status_list_free(status_list);
+    git_repository_free(repo);
     return files;
 }
 
 std::vector<std::string> GitUtils::get_untracked_files() {
-    std::array<char, 128> buffer;
-    auto deleter = [](FILE* f) { pclose(f); };
-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen("git status --porcelain", "r"), deleter);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
+
+    git_status_list *status_list = nullptr;
+    error = git_status_list_new(&status_list, repo, nullptr);
+    if (error != 0) {
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to get status");
+    }
+
     std::vector<std::string> files;
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        std::string line = buffer.data();
-        if (line.size() > 2 && line[0] == '?' && line[1] == '?') {
-            size_t space = line.find(' ', 2);
-            if (space != std::string::npos) {
-                std::string file = line.substr(space + 1);
-                if (!file.empty() && file.back() == '\n') file.pop_back();
-                files.push_back(file);
-            }
+    size_t count = git_status_list_entrycount(status_list);
+    for (size_t i = 0; i < count; ++i) {
+        const git_status_entry *entry = git_status_byindex(status_list, i);
+        if (entry->status & GIT_STATUS_WT_NEW) {
+            files.push_back(entry->index_to_workdir->new_file.path);
         }
     }
+    git_status_list_free(status_list);
+    git_repository_free(repo);
     return files;
 }
 
 void GitUtils::add_files() {
-    system("git add .");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
+    }
+
+    git_index *index = nullptr;
+    git_repository_index(&index, repo);
+    error = git_index_add_all(index, nullptr, 0, nullptr, nullptr);
+    if (error != 0) {
+        git_index_free(index);
+        git_repository_free(repo);
+        throw std::runtime_error("Failed to add files");
+    }
+    git_index_write(index);
+    git_index_free(index);
+    git_repository_free(repo);
 }
 
 void GitUtils::add_files(const std::vector<std::string>& files) {
     if (files.empty()) return;
-    int pipefd[2];
-    if (pipe(pipefd) == -1) {
-        throw std::runtime_error("Pipe creation failed");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
-    pid_t pid = fork();
-    if (pid == -1) {
-        throw std::runtime_error("Fork failed");
-    } else if (pid == 0) {
-        // child
-        close(pipefd[0]); // close read end
-        dup2(pipefd[1], STDERR_FILENO); // redirect stderr to pipe
-        dup2(pipefd[1], STDOUT_FILENO); // redirect stdout to pipe
-        close(pipefd[1]); // close write end after dup
-        std::vector<char*> args;
-        args.push_back(const_cast<char*>("git"));
-        args.push_back(const_cast<char*>("add"));
-        for (const auto& file : files) {
-            args.push_back(const_cast<char*>(file.c_str()));
+
+    git_index *index = nullptr;
+    git_repository_index(&index, repo);
+    for (const auto& file : files) {
+        error = git_index_add_bypath(index, file.c_str());
+        if (error != 0) {
+            git_index_free(index);
+            git_repository_free(repo);
+            throw std::runtime_error("Failed to add file: " + file);
         }
-        args.push_back(nullptr);
-        execvp("git", args.data());
-        _exit(1); // if exec fails
-    } else {
-        // parent
-        close(pipefd[1]); // close write end
-        std::string output;
-        char buffer[128];
-        ssize_t bytes_read;
-        while ((bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
-            buffer[bytes_read] = '\0';
-            output += buffer;
-        }
-        close(pipefd[0]);
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            throw std::runtime_error("Git add failed: " + output);
-        }
-        // On success, output is discarded
     }
+    git_index_write(index);
+    git_index_free(index);
+    git_repository_free(repo);
 }
 
 void GitUtils::commit(const std::string& message) {
-    pid_t pid = fork();
-    if (pid == -1) {
-        throw std::runtime_error("Fork failed");
-    } else if (pid == 0) {
-        // child
-        char* args[] = {"git", "commit", "-m", const_cast<char*>(message.c_str()), nullptr};
-        execvp("git", args);
-        _exit(1); // if exec fails
-    } else {
-        // parent
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            throw std::runtime_error("Git commit failed");
-        }
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
+
+    git_index *index = nullptr;
+    git_repository_index(&index, repo);
+    git_oid tree_oid;
+    git_index_write_tree(&tree_oid, index);
+    git_tree *tree = nullptr;
+    git_tree_lookup(&tree, repo, &tree_oid);
+    git_index_free(index);
+
+    git_reference *head_ref = nullptr;
+    git_repository_head(&head_ref, repo);
+    git_commit *parent_commit = nullptr;
+    git_reference_peel((git_object **)&parent_commit, head_ref, GIT_OBJECT_COMMIT);
+    const git_commit *parents[] = {parent_commit};
+
+    git_signature *author = nullptr;
+    git_signature_default(&author, repo);
+
+    git_oid commit_oid;
+    error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
+    if (error != 0) {
+        git_signature_free(author);
+        git_commit_free(parent_commit);
+        git_reference_free(head_ref);
+        git_tree_free(tree);
+        git_repository_free(repo);
+        throw std::runtime_error("Git commit failed");
+    }
+
+    git_signature_free(author);
+    git_commit_free(parent_commit);
+    git_reference_free(head_ref);
+    git_tree_free(tree);
+    git_repository_free(repo);
 }
 
 std::pair<std::string, std::string> GitUtils::commit_with_output(const std::string& message) {
-    int pipefd[2];
-    if (pipe(pipefd) == -1) {
-        throw std::runtime_error("Pipe creation failed");
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
     }
-    pid_t pid = fork();
-    if (pid == -1) {
-        throw std::runtime_error("Fork failed");
-    } else if (pid == 0) {
-        // child
-        close(pipefd[0]); // close read end
-        dup2(pipefd[1], STDOUT_FILENO); // redirect stdout to pipe
-        dup2(pipefd[1], STDERR_FILENO); // redirect stderr to pipe
-        close(pipefd[1]); // close write end after dup
-        char* args[] = {"git", "commit", "-m", const_cast<char*>(message.c_str()), nullptr};
-        execvp("git", args);
-        _exit(1); // if exec fails
-    } else {
-        // parent
-        close(pipefd[1]); // close write end
-        std::string result;
-        char buffer[128];
-        ssize_t bytes_read;
-        while ((bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
-            buffer[bytes_read] = '\0';
-            result += buffer;
-        }
-        close(pipefd[0]);
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            throw std::runtime_error("Git commit failed");
-        }
-        // Parse commit hash from output, e.g., "[main abc1234] message" or "[abc1234] message"
-        std::string hash;
-        size_t start = result.find('[');
-        if (start != std::string::npos) {
-            size_t end = result.find(']', start);
-            if (end != std::string::npos) {
-                std::string bracket_content = result.substr(start + 1, end - start - 1);
-                size_t space = bracket_content.find(' ');
-                if (space != std::string::npos) {
-                    hash = bracket_content.substr(space + 1); // After branch name
-                } else {
-                    hash = bracket_content; // No branch name, whole content is hash
-                }
-            }
-        }
-        return {hash, result};
+
+    git_index *index = nullptr;
+    git_repository_index(&index, repo);
+    git_oid tree_oid;
+    git_index_write_tree(&tree_oid, index);
+    git_tree *tree = nullptr;
+    git_tree_lookup(&tree, repo, &tree_oid);
+    git_index_free(index);
+
+    git_reference *head_ref = nullptr;
+    git_repository_head(&head_ref, repo);
+    git_commit *parent_commit = nullptr;
+    git_reference_peel((git_object **)&parent_commit, head_ref, GIT_OBJECT_COMMIT);
+    const git_commit *parents[] = {parent_commit};
+
+    git_signature *author = nullptr;
+    git_signature_default(&author, repo);
+
+    git_oid commit_oid;
+    error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
+    if (error != 0) {
+        git_signature_free(author);
+        git_commit_free(parent_commit);
+        git_reference_free(head_ref);
+        git_tree_free(tree);
+        git_repository_free(repo);
+        throw std::runtime_error("Git commit failed");
     }
+
+    char hash_str[GIT_OID_HEXSZ + 1];
+    git_oid_tostr(hash_str, sizeof(hash_str), &commit_oid);
+    std::string hash = hash_str;
+    std::string output = "[" + hash + "] " + message;
+
+    git_signature_free(author);
+    git_commit_free(parent_commit);
+    git_reference_free(head_ref);
+    git_tree_free(tree);
+    git_repository_free(repo);
+    return {hash, output};
 }

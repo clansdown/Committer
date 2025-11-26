@@ -47,6 +47,7 @@ std::string OpenRouterBackend::generate_commit_message(const std::string& diff, 
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
 
@@ -90,6 +91,7 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
     if (api_key.empty()) {
         throw std::runtime_error("API key not set");
     }
+    std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nUsing API key: \"" << api_key << "\"" << std::endl;
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
@@ -104,6 +106,7 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
 
@@ -121,7 +124,7 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
         auto pricing = item["pricing"];
         double prompt = std::stod(pricing.value("prompt", "0.0"));
         double completion = std::stod(pricing.value("completion", "0.0"));
-        m.pricing = "$" + std::to_string(prompt * 1000) + "/1K input, $" + std::to_string(completion * 1000) + "/1K output";
+        m.pricing = "$" + std::to_string(prompt * 1000000) + "/1M input, $" + std::to_string(completion * 1000000) + "/1M output";
             models.push_back(m);
         }
         return models;
@@ -156,6 +159,7 @@ std::string OpenRouterBackend::get_balance() {
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
 
