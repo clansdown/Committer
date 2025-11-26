@@ -1,0 +1,29 @@
+name: commit
+version: "1.0.0"
+summary: Generate commit messages using LLMs
+description: |
+  A utility to generate commit messages using LLMs for git repositories.
+base: core22
+confinement: strict
+
+parts:
+  commit:
+    plugin: cmake
+    source: .
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+    build-packages:
+      - build-essential
+      - cmake
+      - libcurl4-openssl-dev
+      - libgit2-dev
+    stage-packages:
+      - libcurl4
+      - libgit2-1.5
+
+apps:
+  commit:
+    command: bin/commit
+    plugs:
+      - network
+      - home
