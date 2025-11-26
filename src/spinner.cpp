@@ -1,4 +1,5 @@
 #include "spinner.hpp"
+#include "colors.hpp"
 #include <iostream>
 #include <chrono>
 
@@ -11,13 +12,13 @@ Spinner::Spinner(std::string_view label) : label_(label), running_(true) {
             std::string bar = "[";
             for (int i = 0; i < width; ++i) {
                 if (i == position) {
-                    bar += "█";
+                    bar += Colors::GREEN + std::string("█") + Colors::RESET;
                 } else {
                     bar += " ";
                 }
             }
             bar += "]";
-            std::cout << "\r" << label_ << " " << bar << std::flush;
+            std::cout << "\r" << Colors::GREEN << label_ << Colors::RESET << " " << bar << std::flush;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             position += direction;
             if (position == width - 1 || position == 0) {

@@ -112,32 +112,29 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    bool should_add = add_files;
+    auto tracked_modified = GitUtils::get_tracked_modified_files();
+    bool should_add_untracked = add_files;
     if (!no_add && !add_files) {
-        auto unstaged = GitUtils::get_unstaged_files();
-        if (!unstaged.empty()) {
-            std::cout << Colors::GREEN << "Unstaged files:" << Colors::RESET << "\n";
-            for (const auto& f : unstaged) {
-                std::cout << f << "\n";
+        auto untracked = GitUtils::get_untracked_files();
+        if (!untracked.empty()) {
+            std::cout << Colors::GREEN << "Untracked files:" << Colors::RESET << "\n";
+            for (const auto& f : untracked) {
+                std::cout << "  " << f << "\n";
             }
             std::cout << Colors::YELLOW << "Add all to staging? [Y/n]: " << Colors::RESET;
             std::string response;
             std::getline(std::cin, response);
-            should_add = response.empty() || (response.size() > 0 && (response[0] == 'y' || response[0] == 'Y'));
+            should_add_untracked = response.empty() || (response.size() > 0 && (response[0] == 'y' || response[0] == 'Y'));
         }
     }
-    if (!dry_run && should_add) {
-        GitUtils::add_files();
-    } else if (dry_run && should_add) {
-        std::cout << "Would add files to staging\n";
+
+    std::vector<std::string> files_to_add = tracked_modified;
+    if (should_add_untracked) {
+        auto untracked = GitUtils::get_untracked_files();
+        files_to_add.insert(files_to_add.end(), untracked.begin(), untracked.end());
     }
 
-    std::string diff;
-    if (dry_run && should_add) {
-        diff = GitUtils::get_full_diff();
-    } else {
-        diff = GitUtils::get_diff(true);
-    }
+    std::string diff = GitUtils::get_full_diff();
     if (diff.empty()) {
         std::cout << "No changes to commit\n";
         return 0;
@@ -161,12 +158,24 @@ int main(int argc, char** argv) {
     }
 
     if (dry_run) {
+        std::cout << std::endl;
+        if (!files_to_add.empty()) {
+            std::cout << Colors::GREEN << "[DRY RUN] Would add files:" << Colors::RESET << std::endl;
+            for (const auto& f : files_to_add) {
+                std::cout << "  " << f << "\n";
+            }
+        }
         std::cout << Colors::GREEN << "[DRY RUN] Would commit with message:" << Colors::RESET << std::endl;
         std::cout << commit_msg << std::endl;
     } else {
-        GitUtils::commit(commit_msg);
+        GitUtils::add_files(files_to_add);
+        auto [hash, output] = GitUtils::commit_with_output(commit_msg);
+        std::cout << std::endl;
         std::cout << Colors::GREEN << "Committed with message:" << Colors::RESET << std::endl;
         std::cout << commit_msg << std::endl;
+        if (!hash.empty()) {
+            std::cout << Colors::BLUE << "Commit: " << hash << Colors::RESET << std::endl;
+        }
     }
 
     return 0;
