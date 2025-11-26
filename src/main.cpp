@@ -9,6 +9,7 @@
 #include "git_utils.hpp"
 #include "config.hpp"
 #include "llm_backend.hpp"
+#include "spinner.hpp"
 
 std::string get_config_path() {
     const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
@@ -152,7 +153,11 @@ int main(int argc, char** argv) {
     }
     llm->set_api_key(api_key);
 
-    std::string commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
+    std::string commit_msg;
+    {
+        Spinner spinner("Generating commit message...");
+        commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
+    }
 
     if (dry_run) {
         std::cout << "[DRY RUN] Would commit with message:\n" << commit_msg << std::endl;

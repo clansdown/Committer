@@ -34,6 +34,7 @@ set(SOURCES
     src/main.cpp
     src/git_utils.cpp
     src/config.cpp
+    src/spinner.cpp
     src/backends/openrouter_backend.cpp
     src/backends/zen_backend.cpp
 )
