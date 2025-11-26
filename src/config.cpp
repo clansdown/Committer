@@ -24,7 +24,7 @@ Config Config::load_from_file(const std::string& global_path) {
     Config config;
     config.llm_instructions = "Generate a commit message with a summary on the first line, then detailed description.";
     config.backend = "openrouter";
-    config.model = "anthropic/claude-3-haiku";
+    config.model = "x-ai/grok-code-fast-1";
 
     // Load global config
     auto global_values = parse_config_file(global_path);
