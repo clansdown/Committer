@@ -1,0 +1,41 @@
+version: 1
+
+AppDir:
+  path: ./build/AppDir
+
+  app_info:
+    id: commit
+    name: Commit
+    icon: commit
+    version: 1.0.0
+    exec: usr/bin/commit
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+    include:
+      - libcurl4
+    exclude:
+      - man-db
+      - perl
+
+  files:
+    include:
+      - ../resources/commit.desktop:usr/share/applications/commit.desktop
+      - ../resources/commit.png:usr/share/icons/hicolor/128x128/apps/commit.png
+    exclude:
+      - usr/share/man
+      - usr/share/doc
+
+  runtime:
+    version: glibc
+
+  script:
+    - mkdir -p $TARGET_APPDIR/usr/bin
+    - cp commit $TARGET_APPDIR/usr/bin/commit
+
+AppImage:
+  arch: x86_64
+  file_name: Committer-{{VERSION}}-x86_64.AppImage

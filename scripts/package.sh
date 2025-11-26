@@ -7,11 +7,16 @@ set -e
 
 cd build
 
-# Use linuxdeploy to create AppImage
-# Assume linuxdeploy is installed
-linuxdeploy --appdir AppDir --executable commit --desktop-file ../resources/commit.desktop --icon-file ../resources/commit.png
+# Create package directory and venv
+mkdir -p ../package
+uv venv ../package/.venv
+source ../package/.venv/bin/activate
 
-# Create AppImage
-appimagetool AppDir
+# Install and run appimage-builder in the venv
+uv pip install appimage-builder
+appimage-builder --recipe ../appimage-builder.yml
 
-echo "AppImage created: commit-x86_64.AppImage"
+# Optional: deactivate venv
+deactivate
+
+echo "AppImage created"
