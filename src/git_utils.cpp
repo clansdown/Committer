@@ -128,11 +128,46 @@ void GitUtils::add_files() {
 
 void GitUtils::add_files(const std::vector<std::string>& files) {
     if (files.empty()) return;
-    std::string cmd = "git add";
-    for (const auto& file : files) {
-        cmd += " '" + file + "'";
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        throw std::runtime_error("Pipe creation failed");
     }
-    system(cmd.c_str());
+    pid_t pid = fork();
+    if (pid == -1) {
+        throw std::runtime_error("Fork failed");
+    } else if (pid == 0) {
+        // child
+        close(pipefd[0]); // close read end
+        dup2(pipefd[1], STDERR_FILENO); // redirect stderr to pipe
+        dup2(pipefd[1], STDOUT_FILENO); // redirect stdout to pipe
+        close(pipefd[1]); // close write end after dup
+        std::vector<char*> args;
+        args.push_back(const_cast<char*>("git"));
+        args.push_back(const_cast<char*>("add"));
+        for (const auto& file : files) {
+            args.push_back(const_cast<char*>(file.c_str()));
+        }
+        args.push_back(nullptr);
+        execvp("git", args.data());
+        _exit(1); // if exec fails
+    } else {
+        // parent
+        close(pipefd[1]); // close write end
+        std::string output;
+        char buffer[128];
+        ssize_t bytes_read;
+        while ((bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
+            buffer[bytes_read] = '\0';
+            output += buffer;
+        }
+        close(pipefd[0]);
+        int status;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            throw std::runtime_error("Git add failed: " + output);
+        }
+        // On success, output is discarded
+    }
 }
 
 void GitUtils::commit(const std::string& message) {
@@ -165,6 +200,7 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
     } else if (pid == 0) {
         // child
         close(pipefd[0]); // close read end
+        dup2(pipefd[1], STDOUT_FILENO); // redirect stdout to pipe
         dup2(pipefd[1], STDERR_FILENO); // redirect stderr to pipe
         close(pipefd[1]); // close write end after dup
         char* args[] = {"git", "commit", "-m", const_cast<char*>(message.c_str()), nullptr};
@@ -186,7 +222,7 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
             throw std::runtime_error("Git commit failed");
         }
-        // Parse commit hash from output, e.g., "[main abc1234] message"
+        // Parse commit hash from output, e.g., "[main abc1234] message" or "[abc1234] message"
         std::string hash;
         size_t start = result.find('[');
         if (start != std::string::npos) {
@@ -195,7 +231,9 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
                 std::string bracket_content = result.substr(start + 1, end - start - 1);
                 size_t space = bracket_content.find(' ');
                 if (space != std::string::npos) {
-                    hash = bracket_content.substr(space + 1);
+                    hash = bracket_content.substr(space + 1); // After branch name
+                } else {
+                    hash = bracket_content; // No branch name, whole content is hash
                 }
             }
         }
