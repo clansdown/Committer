@@ -78,14 +78,8 @@ int main(int argc, char** argv) {
 
     try {
         auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
-        std::string env_name = (backend == "openrouter") ? "OPENROUTER_API_KEY" : "ZEN_API_KEY";
         std::string& config_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
         if (!config_key.empty()) {
-            return;
-        }
-        char* env = getenv(env_name.c_str());
-        if (env && strlen(env) > 0) {
-            config_key = env;
             return;
         }
         std::cout << Colors::YELLOW << "Enter API key for " << backend << ": " << Colors::RESET;
@@ -102,6 +96,15 @@ int main(int argc, char** argv) {
     };
 
     Config config = Config::load_from_file(config_path);
+
+    char* env_openrouter = getenv("OPENROUTER_API_KEY");
+    if (env_openrouter && strlen(env_openrouter) > 0) {
+        config.openrouter_api_key = env_openrouter;
+    }
+    char* env_zen = getenv("ZEN_API_KEY");
+    if (env_zen && strlen(env_zen) > 0) {
+        config.zen_api_key = env_zen;
+    }
 
     // Auto-select backend if default and only one has a key
     if (backend == "openrouter" && config.openrouter_api_key.empty() && !config.zen_api_key.empty()) {

@@ -173,6 +173,7 @@ void configure_app(const std::string& config_path) {
         if (current_step == ConfigStep::Backend) {
             current_step = ConfigStep::ApiKey;
             api_key = trim((backends[backend_index] == "openrouter") ? existing.openrouter_api_key : existing.zen_api_key);
+            if (api_key.empty()) api_key = " ";
             api_key_input->TakeFocus();
         } else if (current_step == ConfigStep::ApiKey) {
             api_key = trim(api_key);
@@ -206,7 +207,6 @@ void configure_app(const std::string& config_path) {
     auto layout = ftxui::Container::Vertical(std::vector<ftxui::Component>{
         ftxui::Renderer(backend_menu, [&] { return current_step == ConfigStep::Backend ? ftxui::vbox(ftxui::text("Select Backend:"), backend_menu->Render()) : ftxui::text(""); }),
         ftxui::Renderer(api_key_input, [&] { return current_step == ConfigStep::ApiKey ? ftxui::vbox(ftxui::text("Enter API Key:"), api_key_input->Render()) : ftxui::text(""); }),
-        ftxui::Renderer(fetch_button, [&] { return current_step == ConfigStep::Model ? ftxui::vbox(ftxui::text("Fetch available models:"), fetch_button->Render()) : ftxui::text(""); }),
         ftxui::Renderer(model_menu, [&] {
             if (current_step != ConfigStep::Model) return ftxui::text("");
             std::string selected_info = model_names.empty() ? "No models loaded" : "Selected: " + model_names[model_index];
@@ -217,9 +217,6 @@ void configure_app(const std::string& config_path) {
             );
         }),
         ftxui::Renderer(instructions_input, [&] { return current_step == ConfigStep::Instructions ? ftxui::vbox(ftxui::text("LLM Instructions:"), instructions_input->Render()) : ftxui::text(""); }),
-        ftxui::Renderer(next_button, [&] { return current_step != ConfigStep::Instructions ? next_button->Render() : ftxui::text(""); }),
-        ftxui::Renderer(back_button, [&] { return current_step != ConfigStep::Backend ? back_button->Render() : ftxui::text(""); }),
-        ftxui::Renderer(save_button, [&] { return current_step == ConfigStep::Instructions ? save_button->Render() : ftxui::text(""); }),
     });
 
     auto renderer = ftxui::Renderer(layout, [&] {
@@ -234,7 +231,7 @@ void configure_app(const std::string& config_path) {
             ftxui::separator(),
             layout->Render() | ftxui::flex,
             ftxui::separator(),
-            ftxui::text("Use buttons to navigate, Enter to advance, Esc to cancel")
+            ftxui::text("Press Enter to advance, Esc to cancel")
         ) | ftxui::border | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, terminal_height);
     });
 
@@ -258,6 +255,8 @@ void configure_app(const std::string& config_path) {
         } else if (event == ftxui::Event::Escape) {
             done = true;
             screen.ExitLoopClosure()();
+        } else if (event.is_mouse()) {
+            return true;
         }
         return (event == ftxui::Event::Return || event == ftxui::Event::Escape);
     });
