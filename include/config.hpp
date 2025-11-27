@@ -8,6 +8,7 @@ struct Config {
     std::string model;
     std::string openrouter_api_key;
     std::string zen_api_key;
+    bool time_run;
 
     static Config load_from_file(const std::string& path);
 };

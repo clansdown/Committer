@@ -6,6 +6,9 @@
 #include <fstream>
 #include <filesystem>
 #include <cstring>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 #include "git_utils.hpp"
 #include "config.hpp"
 #include "llm_backend.hpp"
@@ -52,6 +55,7 @@ int main(int argc, char** argv) {
     bool query_balance = false;
     bool dry_run = false;
     bool configure = false;
+    bool time_run = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -64,6 +68,7 @@ int main(int argc, char** argv) {
     app.add_flag("--list-models", list_models, "List available models for the selected backend");
     app.add_flag("-q,--query-balance", query_balance, "Query available balance from the backend");
     app.add_flag("--configure", configure, "Configure the application interactively");
+    app.add_flag("--time-run", time_run, "Time program execution and LLM query");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
@@ -98,6 +103,8 @@ int main(int argc, char** argv) {
 
     Config config = Config::load_from_file(config_path);
 
+    config.time_run = time_run;
+
     char* env_openrouter = getenv("OPENROUTER_API_KEY");
     if (env_openrouter && strlen(env_openrouter) > 0) {
         config.openrouter_api_key = env_openrouter;
@@ -111,6 +118,8 @@ int main(int argc, char** argv) {
     if (backend == "openrouter" && config.openrouter_api_key.empty() && !config.zen_api_key.empty()) {
         backend = "zen";
     }
+
+    auto start_total = std::chrono::high_resolution_clock::now();
 
     get_api_key(backend, config, config_path);
     std::string api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
@@ -191,7 +200,19 @@ int main(int argc, char** argv) {
     std::string commit_msg;
     {
         Spinner spinner("Generating commit message...");
+        auto start_llm = std::chrono::high_resolution_clock::now();
         commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
+        auto end_llm = std::chrono::high_resolution_clock::now();
+        if (config.time_run) {
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            auto format_time = [](long long ms) {
+                if (ms < 1000) return std::to_string(ms) + "ms";
+                double sec = ms / 1000.0;
+                std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
+                return ss.str();
+            };
+            std::cout << "LLM query time: " << format_time(llm_ms) << std::endl;
+        }
     }
 
     if (dry_run) {
@@ -218,6 +239,18 @@ int main(int argc, char** argv) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
         }
+    }
+
+    if (config.time_run) {
+        auto end_total = std::chrono::high_resolution_clock::now();
+        auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_total - start_total).count();
+        auto format_time = [](long long ms) {
+            if (ms < 1000) return std::to_string(ms) + "ms";
+            double sec = ms / 1000.0;
+            std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
+            return ss.str();
+        };
+        std::cout << "Total time: " << format_time(total_ms) << std::endl;
     }
 
     return 0;

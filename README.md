@@ -13,6 +13,7 @@ A utility to generate commit messages using LLMs for git repositories.
 - List available models and query account balance
 - Interactive configuration setup
 - Support for custom LLM models
+- Execution timing for total run and LLM queries
 - Builds to AppImage and Snap for portability
 
 ## Dependencies
@@ -52,6 +53,7 @@ Options:
 - `-b,--backend`: LLM backend: openrouter or zen (default: openrouter)
 - `--config`: Path to config file (default: ~/.config/commit/config.txt)
 - `-m,--model`: LLM model to use
+- `--time-run`: Time program execution and LLM query
 
 Set API keys via environment variables:
 - `OPENROUTER_API_KEY` for openrouter
@@ -68,6 +70,7 @@ model=gpt-4
 instructions=Generate a commit message...
 openrouter_api_key=your_key
 zen_api_key=your_key
+time_run=false
 ```
 
 The tool will prompt for configuration if the config file doesn't exist.
