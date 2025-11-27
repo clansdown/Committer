@@ -10,7 +10,7 @@ void ZenBackend::set_api_key(const std::string& key) {
     api_key = key;
 }
 
-std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model) {
+std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider) {
     CURL* curl = curl_easy_init();
     if (!curl) {
         throw std::runtime_error("Failed to init curl");

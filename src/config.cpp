@@ -45,6 +45,7 @@ Config Config::load_from_file(const std::string& global_path) {
     config.backend = "openrouter";
     config.model = "x-ai/grok-code-fast-1";
     config.time_run = false;
+    config.provider = "";
 
     // Load global config
     auto global_values = parse_config_file(global_path);
@@ -54,6 +55,7 @@ Config Config::load_from_file(const std::string& global_path) {
     if (global_values.count("openrouter_api_key")) config.openrouter_api_key = global_values["openrouter_api_key"];
     if (global_values.count("zen_api_key")) config.zen_api_key = global_values["zen_api_key"];
     if (global_values.count("time_run")) config.time_run = (global_values["time_run"] == "true");
+    if (global_values.count("provider")) config.provider = global_values["provider"];
 
     // Load local config if exists
     std::string repo_root = GitUtils::get_repo_root();
@@ -67,6 +69,7 @@ Config Config::load_from_file(const std::string& global_path) {
         if (local_values.count("openrouter_api_key")) config.openrouter_api_key = local_values["openrouter_api_key"];
         if (local_values.count("zen_api_key")) config.zen_api_key = local_values["zen_api_key"];
         if (local_values.count("time_run")) config.time_run = (local_values["time_run"] == "true");
+        if (local_values.count("provider")) config.provider = local_values["provider"];
     }
 
     return config;
@@ -151,6 +154,8 @@ void configure_app(const std::string& config_path) {
         file << "backend=" << full_existing.backend << "\n";
         file << "# Model ID to use for the selected backend\n";
         file << "model=" << full_existing.model << "\n";
+        file << "# Provider to use for the model (optional)\n";
+        file << "provider=" << full_existing.provider << "\n";
         file << "# Custom instructions for commit message generation\n";
         file << "instructions=" << full_existing.llm_instructions << "\n";
         if (!full_existing.openrouter_api_key.empty()) {

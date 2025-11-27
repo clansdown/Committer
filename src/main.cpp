@@ -17,10 +17,15 @@
 
 class TimingGuard {
 public:
-    TimingGuard(bool enabled) : enabled_(enabled), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
+    TimingGuard(bool enabled, const Config& config) : enabled_(enabled), config_(config), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
     void set_llm_time(long long ms) { llm_ms_ = ms; }
     ~TimingGuard() {
         if (enabled_) {
+            std::cout << "\033[34mModel: " << config_.model;
+            if (!config_.provider.empty()) {
+                std::cout << " (provider: " << config_.provider << ")";
+            }
+            std::cout << "\033[0m" << std::endl;
             auto end = std::chrono::high_resolution_clock::now();
             auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
             auto format_time = [](long long ms) {
@@ -29,16 +34,16 @@ public:
                 std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
                 return ss.str();
             };
-            std::string value_format = "\033[38;2;255;255;255;48;2;0;0;158m";
+            std::cout << "\033[34m" << "Total time: " << "\033[37;44m" << format_time(total_ms) << "\033[34;49m";
             if (llm_ms_ >= 0) {
-                std::cout << "\n\033[34m" << "LLM query time: " << value_format << format_time(llm_ms_) << "\033[34;49m ";
+                std::cout << " LLM query time: " << "\033[37;44m" << format_time(llm_ms_) << "\033[34;49m";
             }
-            std::cout << "\033[34m" << "Total time: " << value_format << format_time(total_ms) << "\033[34;49m";
             std::cout << "\033[0m" << std::endl;
         }
     }
 private:
     bool enabled_;
+    const Config& config_;
     std::chrono::high_resolution_clock::time_point start_;
     long long llm_ms_;
 };
@@ -87,6 +92,7 @@ int main(int argc, char** argv) {
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
+    std::string provider = "";
 
     app.set_help_flag("--help", "Print help message");
     app.footer("Configuration file location: " + config_path);
@@ -100,6 +106,7 @@ int main(int argc, char** argv) {
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
+    app.add_option("--provider", provider, "Model provider to use");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -136,7 +143,7 @@ int main(int argc, char** argv) {
     }
     // else: keep config.time_run as loaded from file
 
-    TimingGuard guard(config.time_run);
+    TimingGuard guard(config.time_run, config);
 
     char* env_openrouter = getenv("OPENROUTER_API_KEY");
     if (env_openrouter && strlen(env_openrouter) > 0) {
@@ -159,6 +166,10 @@ int main(int argc, char** argv) {
         config.model = model;
     } else {
         model = config.model;
+    }
+
+    if (!provider.empty()) {
+        config.provider = provider;
     }
 
     auto start_total = std::chrono::high_resolution_clock::now();
@@ -242,7 +253,7 @@ int main(int argc, char** argv) {
     {
         Spinner spinner("Generating commit message...");
         auto start_llm = std::chrono::high_resolution_clock::now();
-        commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
+        commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model, config.provider);
         auto end_llm = std::chrono::high_resolution_clock::now();
         auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
         guard.set_llm_time(llm_ms);
