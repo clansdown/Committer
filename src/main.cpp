@@ -30,10 +30,10 @@ public:
                 return ss.str();
             };
             std::string value_format = "\033[38;2;255;255;255;48;2;0;0;158m";
-            std::cout << "\033[34m" << "Total time: " << value_format << format_time(total_ms) << "\033[34;49m";
             if (llm_ms_ >= 0) {
-                std::cout << " LLM query time: " << value_format << format_time(llm_ms_) << "\033[34;49m";
+                std::cout << "\n\033[34m" << "LLM query time: " << value_format << format_time(llm_ms_) << "\033[34;49m ";
             }
+            std::cout << "\033[34m" << "Total time: " << value_format << format_time(total_ms) << "\033[34;49m";
             std::cout << "\033[0m" << std::endl;
         }
     }
