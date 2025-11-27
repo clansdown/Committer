@@ -6,6 +6,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <iomanip>
 #include "llm_backend.hpp"
 
 void OpenRouterBackend::set_api_key(const std::string& key) {
@@ -124,7 +125,9 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
         auto pricing = item["pricing"];
         double prompt = std::stod(pricing.value("prompt", "0.0"));
         double completion = std::stod(pricing.value("completion", "0.0"));
-        m.pricing = "$" + std::to_string(prompt * 1000000) + "/1M input, $" + std::to_string(completion * 1000000) + "/1M output";
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(2) << (prompt * 1000000) << "/1M input, $" << (completion * 1000000) << "/1M output";
+        m.pricing = "$" + ss.str();
             models.push_back(m);
         }
         return models;

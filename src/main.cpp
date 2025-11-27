@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
     std::string model = "";
 
     app.set_help_flag("--help", "Print help message");
+    app.footer("Configuration file location: " + config_path);
     app.add_flag("-a,--add", add_files, "Add files to staging before commit");
     app.add_flag("-n,--no-add", no_add, "Do not add files, assume already staged");
     app.add_flag("--dry-run", dry_run, "Generate commit message and print it without committing");
