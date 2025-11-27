@@ -24,11 +24,11 @@ public:
                 std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
                 return ss.str();
             };
-            std::cout << "Total time: " << format_time(total_ms);
+            std::cout << "\033[34m" << "Total time: " << format_time(total_ms);
             if (llm_ms_ >= 0) {
                 std::cout << " LLM query time: " << format_time(llm_ms_);
             }
-            std::cout << std::endl;
+            std::cout << "\033[0m" << std::endl;
         }
     }
 private:
