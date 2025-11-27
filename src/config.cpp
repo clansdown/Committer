@@ -27,6 +27,8 @@ std::map<std::string, std::string> parse_config_file(const std::string& path) {
     if (!file) return values;
     std::string line;
     while (std::getline(file, line)) {
+        line = trim(line);
+        if (line.empty() || line[0] == '#') continue;
         size_t eq = line.find('=');
         if (eq != std::string::npos) {
             std::string key = line.substr(0, eq);
@@ -142,11 +144,20 @@ void configure_app(const std::string& config_path) {
             std::filesystem::copy_file(config_path, config_path + ".bak", std::filesystem::copy_options::overwrite_existing);
         }
         std::ofstream file(config_path);
+        file << "# Backend to use for LLM requests (valid values: openrouter, zen)\n";
         file << "backend=" << full_existing.backend << "\n";
+        file << "# Model ID to use for the selected backend\n";
         file << "model=" << full_existing.model << "\n";
+        file << "# Custom instructions for commit message generation\n";
         file << "instructions=" << full_existing.llm_instructions << "\n";
-        if (!full_existing.openrouter_api_key.empty()) file << "openrouter_api_key=" << full_existing.openrouter_api_key << "\n";
-        if (!full_existing.zen_api_key.empty()) file << "zen_api_key=" << full_existing.zen_api_key << "\n";
+        if (!full_existing.openrouter_api_key.empty()) {
+            file << "# API key for OpenRouter backend\n";
+            file << "openrouter_api_key=" << full_existing.openrouter_api_key << "\n";
+        }
+        if (!full_existing.zen_api_key.empty()) {
+            file << "# API key for Zen backend\n";
+            file << "zen_api_key=" << full_existing.zen_api_key << "\n";
+        }
         done = true;
     };
 
