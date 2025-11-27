@@ -7,6 +7,10 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <filesystem>
+#include <sstream>
+#include <filesystem>
+#include <sstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/component/event.hpp>
@@ -19,6 +23,14 @@ std::string trim(const std::string& s) {
     auto start = std::find_if_not(s.begin(), s.end(), [](unsigned char ch) { return std::isspace(ch); });
     auto end = std::find_if_not(s.rbegin(), s.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
     return (start < end) ? std::string(start, end) : std::string();
+}
+
+std::string read_file_content(const std::string& path) {
+    std::ifstream file(path);
+    if (!file) return "";
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
 }
 
 std::map<std::string, std::string> parse_config_file(const std::string& path) {
@@ -50,7 +62,6 @@ Config Config::load_from_file(const std::string& global_path) {
 
     // Load global config
     auto global_values = parse_config_file(global_path);
-    if (global_values.count("instructions")) config.llm_instructions = global_values["instructions"];
     if (global_values.count("backend")) config.backend = global_values["backend"];
     if (global_values.count("model")) config.model = global_values["model"];
     if (global_values.count("openrouter_api_key")) config.openrouter_api_key = global_values["openrouter_api_key"];
@@ -59,13 +70,20 @@ Config Config::load_from_file(const std::string& global_path) {
     if (global_values.count("provider")) config.provider = global_values["provider"];
     if (global_values.count("temperature")) config.temperature = std::stod(global_values["temperature"]);
 
+    std::string global_prompt_path = std::filesystem::path(global_path).parent_path().string() + "/prompt.txt";
+    if (std::filesystem::exists(global_prompt_path)) {
+        std::string content = read_file_content(global_prompt_path);
+        if (!content.empty()) {
+            config.llm_instructions = content;
+        }
+    }
+
     // Load local config if exists
     std::string repo_root = GitUtils::get_repo_root();
     if (!repo_root.empty()) {
         std::string local_path = repo_root + "/.commit.conf";
         auto local_values = parse_config_file(local_path);
         // Override with local values
-        if (local_values.count("instructions")) config.llm_instructions = local_values["instructions"];
         if (local_values.count("backend")) config.backend = local_values["backend"];
         if (local_values.count("model")) config.model = local_values["model"];
         if (local_values.count("openrouter_api_key")) config.openrouter_api_key = local_values["openrouter_api_key"];
@@ -73,6 +91,14 @@ Config Config::load_from_file(const std::string& global_path) {
         if (local_values.count("time_run")) config.time_run = (local_values["time_run"] == "true");
         if (local_values.count("provider")) config.provider = local_values["provider"];
         if (local_values.count("temperature")) config.temperature = std::stod(local_values["temperature"]);
+
+        std::string local_prompt_path = repo_root + "/.commit/prompt.txt";
+        if (std::filesystem::exists(local_prompt_path)) {
+            std::string content = read_file_content(local_prompt_path);
+            if (!content.empty()) {
+                config.llm_instructions = content;
+            }
+        }
     }
 
     return config;
@@ -163,6 +189,11 @@ void configure_app(const std::string& config_path) {
         file << "# temperature=0.7\n";
         file << "# Custom instructions for commit message generation\n";
         file << "instructions=" << full_existing.llm_instructions << "\n";
+        std::string prompt_path = std::filesystem::path(config_path).parent_path().string() + "/prompt.txt";
+        std::ofstream prompt_file(prompt_path);
+        if (prompt_file) {
+            prompt_file << full_existing.llm_instructions;
+        }
         if (!full_existing.openrouter_api_key.empty()) {
             file << "# API key for OpenRouter backend\n";
             file << "openrouter_api_key=" << full_existing.openrouter_api_key << "\n";
