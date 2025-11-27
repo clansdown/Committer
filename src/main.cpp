@@ -9,6 +9,11 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include "git_utils.hpp"
+#include "config.hpp"
+#include "llm_backend.hpp"
+#include "spinner.hpp"
+#include "colors.hpp"
 
 class TimingGuard {
 public:
@@ -24,9 +29,10 @@ public:
                 std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
                 return ss.str();
             };
-            std::cout << "\033[34m" << "Total time: " << format_time(total_ms);
+            std::string value_format = "\033[38;2;255;255;255;48;2;0;0;158m";
+            std::cout << "\033[34m" << "Total time: " << value_format << format_time(total_ms) << "\033[34;49m";
             if (llm_ms_ >= 0) {
-                std::cout << " LLM query time: " << format_time(llm_ms_);
+                std::cout << " LLM query time: " << value_format << format_time(llm_ms_) << "\033[34;49m";
             }
             std::cout << "\033[0m" << std::endl;
         }
@@ -36,11 +42,6 @@ private:
     std::chrono::high_resolution_clock::time_point start_;
     long long llm_ms_;
 };
-#include "git_utils.hpp"
-#include "config.hpp"
-#include "llm_backend.hpp"
-#include "spinner.hpp"
-#include "colors.hpp"
 
 std::string clean_commit_message(const std::string& msg) {
     std::string cleaned = msg;
