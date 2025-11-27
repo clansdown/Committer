@@ -76,7 +76,6 @@ void configure_app(const std::string& config_path) {
     Config existing = Config::load_from_file(config_path);
 
     enum class ConfigStep { Backend, ApiKey, Model, Instructions };
-    ConfigStep current_step = ConfigStep::Backend;
 
     // API key input
     std::string api_key;
@@ -93,7 +92,7 @@ void configure_app(const std::string& config_path) {
     // Instructions input
     std::string instructions = existing.llm_instructions;
 
-    // Fetch models button
+    // Fetch models function
     auto fetch_models = [&]() {
         std::string backend = backends[backend_index];
         std::unique_ptr<LLMBackend> llm;
@@ -121,9 +120,7 @@ void configure_app(const std::string& config_path) {
             }
         }
     };
-    auto fetch_button = ftxui::Button("Fetch Models", fetch_models);
 
-    auto screen = ftxui::ScreenInteractive::TerminalOutput();
     bool done = false;
 
     auto perform_save = [&]() {
@@ -151,14 +148,10 @@ void configure_app(const std::string& config_path) {
         if (!full_existing.openrouter_api_key.empty()) file << "openrouter_api_key=" << full_existing.openrouter_api_key << "\n";
         if (!full_existing.zen_api_key.empty()) file << "zen_api_key=" << full_existing.zen_api_key << "\n";
         done = true;
-        screen.ExitLoopClosure()();
     };
 
     ftxui::MenuOption backend_option;
     auto backend_menu = ftxui::Menu(&backends, &backend_index, backend_option);
-
-    ftxui::InputOption api_key_option;
-    auto api_key_input = ftxui::Input(&api_key, "API Key", api_key_option);
 
     ftxui::MenuOption model_option;
     auto model_menu = ftxui::Menu(&model_names, &model_index, model_option);
@@ -166,47 +159,52 @@ void configure_app(const std::string& config_path) {
     ftxui::InputOption instructions_option;
     auto instructions_input = ftxui::Input(&instructions, "LLM Instructions", instructions_option);
 
+    // First FTXUI screen: Backend selection
+    auto screen1 = ftxui::ScreenInteractive::TerminalOutput();
+    bool backend_selected = false;
 
+    auto layout1 = ftxui::Renderer(backend_menu, [&] { return ftxui::vbox(ftxui::text("Select Backend:"), backend_menu->Render()); });
 
-    // Navigation buttons
-    auto next_button = ftxui::Button("Next", [&]() {
-        if (current_step == ConfigStep::Backend) {
-            current_step = ConfigStep::ApiKey;
-            api_key = trim((backends[backend_index] == "openrouter") ? existing.openrouter_api_key : existing.zen_api_key);
-            if (api_key.empty()) api_key = " ";
-            api_key_input->TakeFocus();
-        } else if (current_step == ConfigStep::ApiKey) {
-            api_key = trim(api_key);
-            if (!api_key.empty()) {
-                current_step = ConfigStep::Model;
-                fetch_models();
-                model_menu->TakeFocus();
-            }
-        } else if (current_step == ConfigStep::Model) {
-            current_step = ConfigStep::Instructions;
-            instructions_input->TakeFocus();
-        }
+    auto renderer1 = ftxui::Renderer(layout1, [&] {
+        return ftxui::vbox(
+            ftxui::text("Configuration Setup") | ftxui::bold,
+            ftxui::text("Step 1/4: Select Backend") | ftxui::dim,
+            ftxui::separator(),
+            layout1->Render() | ftxui::flex,
+            ftxui::separator(),
+            ftxui::text("Press Enter to select, Esc to cancel")
+        ) | ftxui::border | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, terminal_height);
     });
 
-    auto back_button = ftxui::Button("Back", [&]() {
-        if (current_step == ConfigStep::ApiKey) {
-            current_step = ConfigStep::Backend;
-            backend_menu->TakeFocus();
-        } else if (current_step == ConfigStep::Model) {
-            current_step = ConfigStep::ApiKey;
-            api_key_input->TakeFocus();
-        } else if (current_step == ConfigStep::Instructions) {
-            current_step = ConfigStep::Model;
-            model_menu->TakeFocus();
+    auto event_handler1 = ftxui::CatchEvent(renderer1, [&](ftxui::Event event) {
+        if (event == ftxui::Event::Return) {
+            backend_selected = true;
+            screen1.ExitLoopClosure()();
+        } else if (event == ftxui::Event::Escape) {
+            done = true;
+            screen1.ExitLoopClosure()();
         }
+        return false;
     });
 
-    auto save_button = ftxui::Button("Save", perform_save);
+    backend_menu->TakeFocus();
+    screen1.Loop(event_handler1);
 
-    // Layout
-    auto layout = ftxui::Container::Vertical(std::vector<ftxui::Component>{
-        ftxui::Renderer(backend_menu, [&] { return current_step == ConfigStep::Backend ? ftxui::vbox(ftxui::text("Select Backend:"), backend_menu->Render()) : ftxui::text(""); }),
-        ftxui::Renderer(api_key_input, [&] { return current_step == ConfigStep::ApiKey ? ftxui::vbox(ftxui::text("Enter API Key:"), api_key_input->Render()) : ftxui::text(""); }),
+    if (!backend_selected || done) return;
+
+    // API key input with colorized prompt
+    std::cout << "\033[1;32mEnter API Key: \033[0m";
+    std::getline(std::cin, api_key);
+    api_key = trim(api_key);
+
+    // Second FTXUI screen: Model and Instructions
+    ConfigStep current_step = ConfigStep::Model;
+    fetch_models();
+
+    auto screen2 = ftxui::ScreenInteractive::TerminalOutput();
+
+    // Layout for second screen
+    auto layout2 = ftxui::Container::Vertical(std::vector<ftxui::Component>{
         ftxui::Renderer(model_menu, [&] {
             if (current_step != ConfigStep::Model) return ftxui::text("");
             std::string selected_info = model_names.empty() ? "No models loaded" : "Selected: " + model_names[model_index];
@@ -219,48 +217,42 @@ void configure_app(const std::string& config_path) {
         ftxui::Renderer(instructions_input, [&] { return current_step == ConfigStep::Instructions ? ftxui::vbox(ftxui::text("LLM Instructions:"), instructions_input->Render()) : ftxui::text(""); }),
     });
 
-    auto renderer = ftxui::Renderer(layout, [&] {
+    auto renderer2 = ftxui::Renderer(layout2, [&] {
         std::string step_title;
-        if (current_step == ConfigStep::Backend) step_title = "Step 1/4: Select Backend";
-        else if (current_step == ConfigStep::ApiKey) step_title = "Step 2/4: Enter API Key";
-        else if (current_step == ConfigStep::Model) step_title = "Step 3/4: Select Model";
+        if (current_step == ConfigStep::Model) step_title = "Step 3/4: Select Model";
         else if (current_step == ConfigStep::Instructions) step_title = "Step 4/4: Edit Instructions";
         return ftxui::vbox(
             ftxui::text("Configuration Setup") | ftxui::bold,
             ftxui::text(step_title) | ftxui::dim,
             ftxui::separator(),
-            layout->Render() | ftxui::flex,
+            layout2->Render() | ftxui::flex,
             ftxui::separator(),
             ftxui::text("Press Enter to advance, Esc to cancel")
         ) | ftxui::border | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, terminal_height);
     });
 
-    auto event_handler = ftxui::CatchEvent(renderer, [&](ftxui::Event event) {
+    auto event_handler2 = ftxui::CatchEvent(renderer2, [&](ftxui::Event event) {
         if (event == ftxui::Event::Return) {
-            if (current_step == ConfigStep::Backend) {
-                current_step = ConfigStep::ApiKey;
-                api_key = trim((backends[backend_index] == "openrouter") ? existing.openrouter_api_key : existing.zen_api_key);
-                api_key_input->TakeFocus();
-            } else if (current_step == ConfigStep::ApiKey && !api_key.empty()) {
-                api_key = trim(api_key);
-                current_step = ConfigStep::Model;
-                fetch_models();
-                model_menu->TakeFocus();
-            } else if (current_step == ConfigStep::Model) {
+            if (current_step == ConfigStep::Model) {
                 current_step = ConfigStep::Instructions;
                 instructions_input->TakeFocus();
             } else if (current_step == ConfigStep::Instructions) {
                 perform_save();
+                screen2.ExitLoopClosure()();
             }
         } else if (event == ftxui::Event::Escape) {
             done = true;
-            screen.ExitLoopClosure()();
+            screen2.ExitLoopClosure()();
         } else if (event.is_mouse()) {
             return true;
         }
         return (event == ftxui::Event::Return || event == ftxui::Event::Escape);
     });
 
-    backend_menu->TakeFocus();
-    screen.Loop(event_handler);
+    model_menu->TakeFocus();
+    screen2.Loop(event_handler2);
+
+    if (done) {
+        std::cout << "Configuration saved to " << config_path << std::endl;
+    }
 }
