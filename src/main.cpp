@@ -9,6 +9,33 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+
+class TimingGuard {
+public:
+    TimingGuard(bool enabled) : enabled_(enabled), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
+    void set_llm_time(long long ms) { llm_ms_ = ms; }
+    ~TimingGuard() {
+        if (enabled_) {
+            auto end = std::chrono::high_resolution_clock::now();
+            auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
+            auto format_time = [](long long ms) {
+                if (ms < 1000) return std::to_string(ms) + "ms";
+                double sec = ms / 1000.0;
+                std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
+                return ss.str();
+            };
+            std::cout << "Total time: " << format_time(total_ms);
+            if (llm_ms_ >= 0) {
+                std::cout << " LLM query time: " << format_time(llm_ms_);
+            }
+            std::cout << std::endl;
+        }
+    }
+private:
+    bool enabled_;
+    std::chrono::high_resolution_clock::time_point start_;
+    long long llm_ms_;
+};
 #include "git_utils.hpp"
 #include "config.hpp"
 #include "llm_backend.hpp"
@@ -103,7 +130,12 @@ int main(int argc, char** argv) {
 
     Config config = Config::load_from_file(config_path);
 
-    config.time_run = time_run;
+    if (time_run) {
+        config.time_run = true;
+    }
+    // else: keep config.time_run as loaded from file
+
+    TimingGuard guard(config.time_run);
 
     char* env_openrouter = getenv("OPENROUTER_API_KEY");
     if (env_openrouter && strlen(env_openrouter) > 0) {
@@ -119,8 +151,6 @@ int main(int argc, char** argv) {
         backend = "zen";
     }
 
-    auto start_total = std::chrono::high_resolution_clock::now();
-
     get_api_key(backend, config, config_path);
     std::string api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
 
@@ -129,6 +159,8 @@ int main(int argc, char** argv) {
     } else {
         model = config.model;
     }
+
+    auto start_total = std::chrono::high_resolution_clock::now();
 
     if (list_models || query_balance) {
         std::unique_ptr<LLMBackend> llm;
@@ -142,7 +174,11 @@ int main(int argc, char** argv) {
         }
         llm->set_api_key(api_key);
         if (list_models) {
+            auto start_llm = std::chrono::high_resolution_clock::now();
             auto models = llm->get_available_models();
+            auto end_llm = std::chrono::high_resolution_clock::now();
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            guard.set_llm_time(llm_ms);
             for (const auto& m : models) {
                 std::cout << "ID: " << m.id << "\n";
                 std::cout << "Name: " << m.name << "\n";
@@ -150,7 +186,11 @@ int main(int argc, char** argv) {
                 std::cout << "Description: " << m.description << "\n\n";
             }
         } else if (query_balance) {
+            auto start_llm = std::chrono::high_resolution_clock::now();
             std::string balance = llm->get_balance();
+            auto end_llm = std::chrono::high_resolution_clock::now();
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            guard.set_llm_time(llm_ms);
             std::cout << "Available balance: " << balance << std::endl;
         }
         return 0;
@@ -203,16 +243,8 @@ int main(int argc, char** argv) {
         auto start_llm = std::chrono::high_resolution_clock::now();
         commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model);
         auto end_llm = std::chrono::high_resolution_clock::now();
-        if (config.time_run) {
-            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
-            auto format_time = [](long long ms) {
-                if (ms < 1000) return std::to_string(ms) + "ms";
-                double sec = ms / 1000.0;
-                std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
-                return ss.str();
-            };
-            std::cout << "LLM query time: " << format_time(llm_ms) << std::endl;
-        }
+        auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+        guard.set_llm_time(llm_ms);
     }
 
     if (dry_run) {
@@ -239,18 +271,6 @@ int main(int argc, char** argv) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
         }
-    }
-
-    if (config.time_run) {
-        auto end_total = std::chrono::high_resolution_clock::now();
-        auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_total - start_total).count();
-        auto format_time = [](long long ms) {
-            if (ms < 1000) return std::to_string(ms) + "ms";
-            double sec = ms / 1000.0;
-            std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
-            return ss.str();
-        };
-        std::cout << "Total time: " << format_time(total_ms) << std::endl;
     }
 
     return 0;
