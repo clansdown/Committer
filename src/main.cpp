@@ -25,6 +25,9 @@ public:
             if (!config_.provider.empty()) {
                 std::cout << " (provider: " << config_.provider << ")";
             }
+            if (config_.temperature >= 0.0) {
+                std::cout << " temperature: " << config_.temperature;
+            }
             std::cout << "\033[0m" << std::endl;
             auto end = std::chrono::high_resolution_clock::now();
             auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
@@ -93,6 +96,7 @@ int main(int argc, char** argv) {
     std::string config_path = get_config_path();
     std::string model = "";
     std::string provider = "";
+    double temperature = 0.35;
 
     app.set_help_flag("--help", "Print help message");
     app.footer("Configuration file location: " + config_path);
@@ -107,6 +111,7 @@ int main(int argc, char** argv) {
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
     app.add_option("--provider", provider, "Model provider to use");
+    app.add_option("--temperature", temperature, "Temperature for chat generation (0.0-2.0)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -170,6 +175,10 @@ int main(int argc, char** argv) {
 
     if (!provider.empty()) {
         config.provider = provider;
+    }
+
+    if (temperature != 0.35) {
+        config.temperature = temperature;
     }
 
     auto start_total = std::chrono::high_resolution_clock::now();
@@ -253,7 +262,7 @@ int main(int argc, char** argv) {
     {
         Spinner spinner("Generating commit message...");
         auto start_llm = std::chrono::high_resolution_clock::now();
-        commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model, config.provider);
+        commit_msg = llm->generate_commit_message(diff, config.llm_instructions, config.model, config.provider, config.temperature);
         auto end_llm = std::chrono::high_resolution_clock::now();
         auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
         guard.set_llm_time(llm_ms);

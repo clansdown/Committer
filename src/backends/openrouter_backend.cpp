@@ -13,7 +13,7 @@ void OpenRouterBackend::set_api_key(const std::string& key) {
     api_key = key;
 }
 
-std::string OpenRouterBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider) {
+std::string OpenRouterBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider, double temperature) {
     CURL* curl = curl_easy_init();
     if (!curl) {
         throw std::runtime_error("Failed to init curl");
@@ -36,6 +36,9 @@ std::string OpenRouterBackend::generate_commit_message(const std::string& diff, 
             {"order", {provider}},
             {"allow_fallbacks", false}
         };
+    }
+    if (temperature >= 0.0) {
+        payload_json["temperature"] = temperature;
     }
     std::string payload = payload_json.dump();
 

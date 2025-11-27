@@ -10,6 +10,7 @@ struct Config {
     std::string zen_api_key;
     bool time_run;
     std::string provider;
+    double temperature;
 
     static Config load_from_file(const std::string& path);
 };
