@@ -11,7 +11,6 @@ struct Config {
     bool time_run;
     std::string provider;
     double temperature;
-    int generation_stats_delay_ms = 100;
 
     static Config load_from_file(const std::string& path);
 };

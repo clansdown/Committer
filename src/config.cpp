@@ -58,8 +58,7 @@ Config Config::load_from_file(const std::string& global_path) {
     config.model = "x-ai/grok-code-fast-1";
     config.time_run = false;
     config.provider = "";
-    config.temperature = 0.35;
-    config.generation_stats_delay_ms = 100;
+    config.temperature = 0.25;
 
     // Load global config
     auto global_values = parse_config_file(global_path);
@@ -70,7 +69,6 @@ Config Config::load_from_file(const std::string& global_path) {
     if (global_values.count("time_run")) config.time_run = (global_values["time_run"] == "true");
     if (global_values.count("provider")) config.provider = global_values["provider"];
     if (global_values.count("temperature")) config.temperature = std::stod(global_values["temperature"]);
-    if (global_values.count("generation_stats_delay_ms")) config.generation_stats_delay_ms = std::stoi(global_values["generation_stats_delay_ms"]);
 
     std::string global_prompt_path = std::filesystem::path(global_path).parent_path().string() + "/prompt.txt";
     if (std::filesystem::exists(global_prompt_path)) {
@@ -93,7 +91,6 @@ Config Config::load_from_file(const std::string& global_path) {
         if (local_values.count("time_run")) config.time_run = (local_values["time_run"] == "true");
         if (local_values.count("provider")) config.provider = local_values["provider"];
         if (local_values.count("temperature")) config.temperature = std::stod(local_values["temperature"]);
-        if (local_values.count("generation_stats_delay_ms")) config.generation_stats_delay_ms = std::stoi(local_values["generation_stats_delay_ms"]);
 
         std::string local_prompt_path = repo_root + "/.commit/prompt.txt";
         if (std::filesystem::exists(local_prompt_path)) {
@@ -191,7 +188,7 @@ void configure_app(const std::string& config_path) {
         file << "# Temperature for chat generation (0.0-2.0, optional)\n";
         file << "# temperature=0.7\n";
         file << "# Delay in milliseconds before querying generation stats (default: 100)\n";
-        file << "# generation_stats_delay_ms=100\n";
+
         file << "# Custom instructions for commit message generation\n";
         file << "instructions=" << full_existing.llm_instructions << "\n";
         std::string prompt_path = std::filesystem::path(config_path).parent_path().string() + "/prompt.txt";

@@ -66,7 +66,14 @@ GenerationResult OpenRouterBackend::generate_commit_message(const std::string& d
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    return handle_chat_response(response, payload);
+    GenerationResult result = handle_chat_response(response, payload);
+
+    // Fetch detailed generation statistics
+    if (!result.generation_id.empty()) {
+        fetch_generation_stats(result, result.generation_id);
+    }
+
+    return result;
 }
 
 GenerationResult OpenRouterBackend::handle_chat_response(const std::string& response, const std::string& payload) {
@@ -88,12 +95,77 @@ GenerationResult OpenRouterBackend::handle_chat_response(const std::string& resp
         GenerationResult result;
         result.content = j["choices"][0]["message"]["content"];
         result.generation_id = j["id"];
+
+        // Extract usage statistics if available
+        if (j.contains("usage")) {
+            auto& usage = j["usage"];
+            result.input_tokens = usage.value("prompt_tokens", -1.0);
+            result.output_tokens = usage.value("completion_tokens", -1.0);
+            // Note: total_cost, latency, generation_time would need to be calculated or left as -1
+            // since they're not directly in the usage response
+        }
+
         return result;
     } catch (const nlohmann::json::exception& e) {
         std::cerr << "JSON parsing error in commit message generation: " << e.what() << std::endl;
         std::cerr << "Full response: " << response << std::endl;
         throw;
     }
+}
+
+void OpenRouterBackend::fetch_generation_stats(GenerationResult& result, const std::string& generation_id) {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            continue;
+        }
+
+        std::string url = "https://openrouter.ai/api/v1/generation?id=" + generation_id;
+        if (api_key.empty()) {
+            curl_easy_cleanup(curl);
+            continue;
+        }
+
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+
+        std::string response;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(headers);
+
+        if (res != CURLE_OK) {
+            continue;
+        }
+
+        try {
+            nlohmann::json j = nlohmann::json::parse(response);
+            if (j.contains("data")) {
+                auto& data = j["data"];
+                result.total_cost = data.value("total_cost", -1.0);
+                result.latency = data.value("latency", -1.0);
+                result.generation_time = data.value("generation_time", -1.0);
+                // Update token counts if more accurate data available
+                if (data.contains("tokens_prompt") && data["tokens_prompt"].is_number()) {
+                    result.input_tokens = data["tokens_prompt"];
+                }
+                if (data.contains("tokens_completion") && data["tokens_completion"].is_number()) {
+                    result.output_tokens = data["tokens_completion"];
+                }
+                return; // Success
+            }
+        } catch (const nlohmann::json::exception&) {
+            // Continue to next attempt
+        }
+    }
+    // If all retries failed, leave stats as -1 (already set)
 }
 
 std::vector<Model> OpenRouterBackend::get_available_models() {
@@ -202,65 +274,3 @@ std::string OpenRouterBackend::get_balance() {
     }
 }
 
-std::optional<GenerationStats> OpenRouterBackend::get_generation_stats(const std::string& generation_id, bool dry_run, int max_retries, int delay_ms) {
-    if (generation_id.empty()) {
-        return std::nullopt;
-    }
-
-    for (int attempt = 0; attempt < max_retries; ++attempt) {
-        if (attempt > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
-        }
-
-        CURL* curl = curl_easy_init();
-        if (!curl) {
-            continue;
-        }
-
-        std::string url = "https://openrouter.ai/api/v1/generation?id=" + generation_id;
-        if (api_key.empty()) {
-            curl_easy_cleanup(curl);
-            continue;
-        }
-
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
-
-        std::string response;
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
-
-        if (res != CURLE_OK) {
-            continue;
-        }
-
-        try {
-            nlohmann::json j = nlohmann::json::parse(response);
-            if (j.contains("data")) {
-                auto& data = j["data"];
-                 GenerationStats stats;
-                 stats.date = data.value("created_at", "");
-                 stats.backend = "openrouter";
-                 stats.model = data.value("model", "");
-                 stats.provider = data.value("provider_name", "");
-                 stats.input_tokens = data.value("tokens_prompt", 0.0);
-                 stats.output_tokens = data.value("tokens_completion", 0.0);
-                 stats.total_cost = data.value("total_cost", 0.0);
-                 stats.latency = data.value("latency", -1.0);
-                 stats.generation_time = data.value("generation_time", -1.0);
-                 stats.dry_run = dry_run;
-                return stats;
-            }
-        } catch (const nlohmann::json::exception&) {
-            // Continue to next attempt
-        }
-    }
-
-    return std::nullopt;
-}

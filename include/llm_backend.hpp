@@ -21,6 +21,11 @@ struct Model {
 struct GenerationResult {
     std::string content;
     std::string generation_id;
+    double input_tokens = -1;
+    double output_tokens = -1;
+    double total_cost = -1.0;
+    double latency = -1.0;
+    double generation_time = -1.0;
 };
 
 struct GenerationStats {
@@ -51,10 +56,11 @@ public:
     GenerationResult generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) override;
     std::vector<Model> get_available_models() override;
     std::string get_balance() override;
-    std::optional<GenerationStats> get_generation_stats(const std::string& generation_id, bool dry_run = false, int max_retries = 3, int delay_ms = 100);
+
 private:
     std::string api_key;
     GenerationResult handle_chat_response(const std::string& response, const std::string& payload);
+    void fetch_generation_stats(GenerationResult& result, const std::string& generation_id);
 };
 
 class ZenBackend : public LLMBackend {
