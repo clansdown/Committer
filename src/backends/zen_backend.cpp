@@ -10,7 +10,7 @@ void ZenBackend::set_api_key(const std::string& key) {
     api_key = key;
 }
 
-std::string ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider, double temperature) {
+GenerationResult ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider, double temperature) {
     CURL* curl = curl_easy_init();
     if (!curl) {
         throw std::runtime_error("Failed to init curl");
@@ -49,7 +49,7 @@ std::string ZenBackend::generate_commit_message(const std::string& diff, const s
     return handle_chat_response(response, payload);
 }
 
-std::string ZenBackend::handle_chat_response(const std::string& response, const std::string& payload) {
+GenerationResult ZenBackend::handle_chat_response(const std::string& response, const std::string& payload) {
     try {
         nlohmann::json j = nlohmann::json::parse(response);
         if (j.contains("error")) {
@@ -65,16 +65,23 @@ std::string ZenBackend::handle_chat_response(const std::string& response, const 
             std::cerr << "API error: " << error_msg << std::endl;
             throw std::runtime_error("API error: " + error_msg);
         }
+        GenerationResult result;
         // Try OpenAI format first
         if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
-            return j["choices"][0]["message"]["content"];
+            result.content = j["choices"][0]["message"]["content"];
+            // Zen may not provide generation IDs like OpenRouter, so leave empty
+            result.generation_id = "";
         }
         // Try Anthropic format
-        if (j.contains("content") && j["content"].is_array() && !j["content"].empty()) {
-            return j["content"][0]["text"];
+        else if (j.contains("content") && j["content"].is_array() && !j["content"].empty()) {
+            result.content = j["content"][0]["text"];
+            result.generation_id = "";
         }
         // Fallback
-        throw std::runtime_error("Unexpected response format");
+        else {
+            throw std::runtime_error("Unexpected response format");
+        }
+        return result;
     } catch (const nlohmann::json::exception& e) {
         std::cerr << "JSON parsing error in commit message generation: " << e.what() << std::endl;
         std::cerr << "Full response: " << response << std::endl;

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
@@ -17,11 +18,29 @@ struct Model {
     std::string description;
 };
 
+struct GenerationResult {
+    std::string content;
+    std::string generation_id;
+};
+
+struct GenerationStats {
+    std::string date;
+    std::string backend;
+    std::string model;
+    std::string provider;
+    double input_tokens = -1;
+    double output_tokens = -1;
+    double total_cost = -1.0;
+    double latency = -1.0;
+    double generation_time = -1.0;
+    bool dry_run = false;
+};
+
 class LLMBackend {
 public:
     virtual ~LLMBackend() = default;
     virtual void set_api_key(const std::string& key) = 0;
-    virtual std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) = 0;
+    virtual GenerationResult generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) = 0;
     virtual std::vector<Model> get_available_models() = 0;
     virtual std::string get_balance() = 0;
 };
@@ -29,23 +48,24 @@ public:
 class OpenRouterBackend : public LLMBackend {
 public:
     void set_api_key(const std::string& key) override;
-    std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) override;
+    GenerationResult generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) override;
     std::vector<Model> get_available_models() override;
     std::string get_balance() override;
+    std::optional<GenerationStats> get_generation_stats(const std::string& generation_id, bool dry_run = false, int max_retries = 3, int delay_ms = 100);
 private:
     std::string api_key;
-    std::string handle_chat_response(const std::string& response, const std::string& payload);
+    GenerationResult handle_chat_response(const std::string& response, const std::string& payload);
 };
 
 class ZenBackend : public LLMBackend {
 public:
     void set_api_key(const std::string& key) override;
-    std::string generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) override;
+    GenerationResult generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider = "", double temperature = -1.0) override;
     std::vector<Model> get_available_models() override;
     std::string get_balance() override;
 private:
     std::string api_key;
-    std::string handle_chat_response(const std::string& response, const std::string& payload);
+    GenerationResult handle_chat_response(const std::string& response, const std::string& payload);
     std::vector<Model> parse_models_response(const std::string& response);
     void handle_api_error(const std::string& response, const std::string& error_msg);
     std::string get_pricing_for_model(const std::string& id);

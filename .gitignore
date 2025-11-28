@@ -45,3 +45,6 @@ build/
 package/
 errors.txt
 .aider*
+
+# Local generation statistics
+.commit/
