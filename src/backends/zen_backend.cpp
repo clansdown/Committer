@@ -5,16 +5,14 @@
 #include <stdexcept>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include "curl_request.hpp"
 
 void ZenBackend::set_api_key(const std::string& key) {
     api_key = key;
 }
 
 GenerationResult ZenBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider, double temperature) {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to init curl");
-    }
+    CurlRequest req;
 
     std::string url = get_endpoint_for_model(model);
     if (api_key.empty()) {
@@ -24,27 +22,19 @@ GenerationResult ZenBackend::generate_commit_message(const std::string& diff, co
     nlohmann::json payload_json = build_payload_for_model(model, instructions, diff);
     std::string payload = payload_json.dump();
 
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
-    headers = curl_slist_append(headers, "Content-Type: application/json");
+    req.set_url(url);
+    req.set_postfields(payload);
+    req.add_header("Authorization: Bearer " + api_key);
+    req.add_header("Content-Type: application/json");
 
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    req.set_write_callback(WriteCallback, &response);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode res = req.perform();
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(headers);
 
     return handle_chat_response(response, payload);
 }
@@ -90,36 +80,25 @@ GenerationResult ZenBackend::handle_chat_response(const std::string& response, c
 }
 
 std::vector<Model> ZenBackend::get_available_models() {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to init curl");
-    }
+    CurlRequest req;
 
     std::string url = "https://opencode.ai/zen/v1/models";
     if (api_key.empty()) {
         throw std::runtime_error("API key not set");
     }
 
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    req.set_url(url);
+    req.set_get_method();
+    req.add_header("Authorization: Bearer " + api_key);
 
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    req.set_write_callback(WriteCallback, &response);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode res = req.perform();
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(headers);
 
     return parse_models_response(response);
 }

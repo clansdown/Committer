@@ -10,16 +10,14 @@
 #include <thread>
 #include <chrono>
 #include "llm_backend.hpp"
+#include "curl_request.hpp"
 
 void OpenRouterBackend::set_api_key(const std::string& key) {
     api_key = key;
 }
 
 GenerationResult OpenRouterBackend::generate_commit_message(const std::string& diff, const std::string& instructions, const std::string& model, const std::string& provider, double temperature) {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to init curl");
-    }
+    CurlRequest req;
 
     std::string url = "https://openrouter.ai/api/v1/chat/completions";
     if (api_key.empty()) {
@@ -44,27 +42,19 @@ GenerationResult OpenRouterBackend::generate_commit_message(const std::string& d
     }
     std::string payload = payload_json.dump();
 
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
-    headers = curl_slist_append(headers, "Content-Type: application/json");
+    req.set_url(url);
+    req.set_postfields(payload);
+    req.add_header("Authorization: Bearer " + api_key);
+    req.add_header("Content-Type: application/json");
 
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    req.set_write_callback(WriteCallback, &response);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode res = req.perform();
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(headers);
 
     GenerationResult result = handle_chat_response(response, payload);
 
@@ -117,29 +107,23 @@ void OpenRouterBackend::fetch_generation_stats(GenerationResult& result, const s
     for (int attempt = 0; attempt < 3; ++attempt) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        CURL* curl = curl_easy_init();
-        if (!curl) {
-            continue;
-        }
+        CurlRequest req;
 
         std::string url = "https://openrouter.ai/api/v1/generation?id=" + generation_id;
         if (api_key.empty()) {
-            curl_easy_cleanup(curl);
             continue;
         }
 
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+        req.set_url(url);
+        req.add_header("Authorization: Bearer " + api_key);
 
         std::string response;
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        req.set_write_callback(WriteCallback, &response);
 
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
+        CURLcode res = req.perform();
+        if (res != CURLE_OK) {
+            continue;
+        }
 
         if (res != CURLE_OK) {
             continue;
@@ -169,10 +153,7 @@ void OpenRouterBackend::fetch_generation_stats(GenerationResult& result, const s
 }
 
 std::vector<Model> OpenRouterBackend::get_available_models() {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to init curl");
-    }
+    CurlRequest req;
 
     std::string url = "https://openrouter.ai/api/v1/models";
     if (api_key.empty()) {
@@ -180,25 +161,17 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
     }
     std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nUsing API key: \"" << api_key << "\"" << std::endl;
 
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    req.set_url(url);
+    req.add_header("Authorization: Bearer " + api_key);
 
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    req.set_write_callback(WriteCallback, &response);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode res = req.perform();
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(headers);
 
     try {
         nlohmann::json j = nlohmann::json::parse(response);
@@ -225,35 +198,24 @@ std::vector<Model> OpenRouterBackend::get_available_models() {
 }
 
 std::string OpenRouterBackend::get_balance() {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to init curl");
-    }
+    CurlRequest req;
 
     std::string url = "https://openrouter.ai/api/v1/credits";
     if (api_key.empty()) {
         throw std::runtime_error("API key not set");
     }
 
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key).c_str());
+    req.set_url(url);
+    req.add_header("Authorization: Bearer " + api_key);
 
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    req.set_write_callback(WriteCallback, &response);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode res = req.perform();
     if (res != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
         std::cerr << "Failed to fetch URL: " << url << ", libcurl error: " << curl_easy_strerror(res) << std::endl;
         throw std::runtime_error("Curl error: " + std::string(curl_easy_strerror(res)));
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(headers);
 
     try {
         nlohmann::json j = nlohmann::json::parse(response);
