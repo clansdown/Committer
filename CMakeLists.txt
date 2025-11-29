@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20...3.30)
 set(CMAKE_WARN_DEPRECATED OFF)
 project(commit VERSION 1.0.0 LANGUAGES CXX)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -72,3 +74,11 @@ target_compile_options(${PROJECT_NAME} PRIVATE ${LIBCURL_CFLAGS_OTHER} ${LIBGIT2
 
 # Install
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+
+# Dev target with debugging symbols and -Og
+add_executable(dev ${SOURCES})
+set_target_properties(dev PROPERTIES OUTPUT_NAME commit)
+target_compile_options(dev PRIVATE -g -Og)
+target_link_libraries(dev ${LIBCURL_LIBRARIES} ${LIBGIT2_LIBRARIES} CLI11::CLI11 nlohmann_json::nlohmann_json ftxui::screen ftxui::dom ftxui::component)
+target_include_directories(dev PRIVATE ${ftxui_SOURCE_DIR}/include)
+target_compile_options(dev PRIVATE ${LIBCURL_CFLAGS_OTHER} ${LIBGIT2_CFLAGS_OTHER})
