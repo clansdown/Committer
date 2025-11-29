@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "default_prompt.hpp"
 #include "git_utils.hpp"
 #include "llm_backend.hpp"
 #include <algorithm>
@@ -53,7 +54,7 @@ std::map<std::string, std::string> parse_config_file(const std::string& path) {
 
 Config Config::load_from_file(const std::string& global_path) {
     Config config;
-    config.llm_instructions = "Generate a commit message with a summary on the first line, then detailed, dense but concise description. If there are multiple, unrelated changes, prefer a list if they can be described in a single line or separate paragraphs if they require more words to convey everything.";
+    config.llm_instructions = DEFAULT_LLM_INSTRUCTIONS;
     config.backend = "openrouter";
     config.model = "x-ai/grok-code-fast-1";
     config.time_run = false;

@@ -53,8 +53,9 @@
 
 ### Best Practices
 - **Documentation**: No explicit documentation requirements, but code should be self-explanatory
-- **Comments**: Minimal comments, prefer descriptive function/variable names
+- **Comments**: Minimal comments, prefer descriptive function/variable names. Functions should get a javadoc-style comment explaining their purpose
 - **Modularity**: Keep functions focused on single responsibilities
 - **Error checking**: Validate inputs and handle edge cases
 - **Security**: Never log or expose API keys, validate all external inputs</content>
+- Resource management (freeing resources) should be by RAII whenever this doesn't result in contorted code to make it work.
 <parameter name="filePath">/home/ctl/projects/Committer/AGENTS.md

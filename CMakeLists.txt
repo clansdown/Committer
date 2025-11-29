@@ -51,6 +51,7 @@ set(SOURCES
     src/main.cpp
     src/git_utils.cpp
     src/config.cpp
+    src/default_prompt.cpp
     src/spinner.cpp
     src/statistics.cpp
     src/backends/openrouter_backend.cpp
