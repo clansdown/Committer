@@ -60,6 +60,7 @@ Config Config::load_from_file(const std::string& global_path) {
     config.time_run = false;
     config.provider = "";
     config.temperature = 0.25;
+    config.auto_push = false;
 
     // Load global config
     auto global_values = parse_config_file(global_path);
@@ -70,6 +71,7 @@ Config Config::load_from_file(const std::string& global_path) {
     if (global_values.count("time_run")) config.time_run = (global_values["time_run"] == "true");
     if (global_values.count("provider")) config.provider = global_values["provider"];
     if (global_values.count("temperature")) config.temperature = std::stod(global_values["temperature"]);
+    if (global_values.count("auto_push")) config.auto_push = (global_values["auto_push"] == "true");
 
     std::string global_prompt_path = std::filesystem::path(global_path).parent_path().string() + "/prompt.txt";
     if (std::filesystem::exists(global_prompt_path)) {
@@ -92,6 +94,7 @@ Config Config::load_from_file(const std::string& global_path) {
         if (local_values.count("time_run")) config.time_run = (local_values["time_run"] == "true");
         if (local_values.count("provider")) config.provider = local_values["provider"];
         if (local_values.count("temperature")) config.temperature = std::stod(local_values["temperature"]);
+        if (local_values.count("auto_push")) config.auto_push = (local_values["auto_push"] == "true");
 
         std::string local_prompt_path = repo_root + "/.commit/prompt.txt";
         if (std::filesystem::exists(local_prompt_path)) {

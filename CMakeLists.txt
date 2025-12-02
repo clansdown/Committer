@@ -70,7 +70,7 @@ target_link_libraries(${PROJECT_NAME} ${LIBCURL_LIBRARIES} ${LIBGIT2_LIBRARIES} 
 target_include_directories(${PROJECT_NAME} PRIVATE ${ftxui_SOURCE_DIR}/include)
 
 # Compiler flags
-target_compile_options(${PROJECT_NAME} PRIVATE ${LIBCURL_CFLAGS_OTHER} ${LIBGIT2_CFLAGS_OTHER})
+target_compile_options(${PROJECT_NAME} PRIVATE -O3 ${LIBCURL_CFLAGS_OTHER} ${LIBGIT2_CFLAGS_OTHER})
 
 # Install
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
     bool time_run = false;
     bool summary = false;
     bool global_summary = false;
+    bool push_flag = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -129,6 +130,7 @@ int main(int argc, char** argv) {
     app.add_flag("--time-run", time_run, "Time program execution and LLM query");
     app.add_flag("--summary", summary, "Show summary of generation costs from the local git repository");
     app.add_flag("--global-summary", global_summary, "Show summary of generation costs from the global log");
+    app.add_flag("--push", push_flag, "Automatically push commits upstream after successful commit");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
@@ -176,6 +178,7 @@ int main(int argc, char** argv) {
         file << "backend=" << config.backend << "\n";
         file << "model=" << config.model << "\n";
         file << "instructions=" << config.llm_instructions << "\n";
+        file << "auto_push=" << (config.auto_push ? "true" : "false") << "\n";
         if (!config.openrouter_api_key.empty()) file << "openrouter_api_key=" << config.openrouter_api_key << "\n";
         if (!config.zen_api_key.empty()) file << "zen_api_key=" << config.zen_api_key << "\n";
     };
@@ -220,6 +223,10 @@ int main(int argc, char** argv) {
 
     if (temperature != 0.35) {
         config.temperature = temperature;
+    }
+
+    if (push_flag) {
+        config.auto_push = true;
     }
 
     auto start_total = std::chrono::high_resolution_clock::now();
@@ -339,6 +346,15 @@ int main(int argc, char** argv) {
         } catch (const std::runtime_error& e) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
+        }
+    }
+
+    if (!dry_run && config.auto_push) {
+        try {
+            GitUtils::push();
+            std::cout << Colors::GREEN << "Changes pushed upstream successfully." << Colors::RESET << std::endl;
+        } catch (const std::runtime_error& e) {
+            std::cerr << "Failed to push: " << e.what() << std::endl;
         }
     }
 

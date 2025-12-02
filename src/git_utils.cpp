@@ -6,6 +6,7 @@
 #include <memory>
 #include <array>
 #include <vector>
+#include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <git2.h>
@@ -333,4 +334,76 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
     git_tree_free(tree);
     git_repository_free(repo);
     return {hash, output};
+}
+
+struct progress_data {
+    int pack_total;
+    int pack_current;
+    int transfer_total;
+    int transfer_current;
+};
+
+int pack_progress_cb(int stage, uint32_t current, uint32_t total, void *payload) {
+    progress_data *pd = (progress_data*)payload;
+    pd->pack_current = current;
+    pd->pack_total = total;
+    std::cout << "\rPacking: " << current << "/" << total << std::flush;
+    return 0;
+}
+
+int transfer_progress_cb(const git_transfer_progress *stats, void *payload) {
+    progress_data *pd = (progress_data*)payload;
+    pd->transfer_current = stats->received_objects;
+    pd->transfer_total = stats->total_objects;
+    std::cout << "\rTransferring: " << stats->received_objects << "/" << stats->total_objects << std::flush;
+    return 0;
+}
+
+void GitUtils::push() {
+    git_libgit2_init();
+    git_repository *repo = nullptr;
+    int error = git_repository_open(&repo, ".");
+    if (error != 0) {
+        throw std::runtime_error("Failed to open repository");
+    }
+
+    // Find remote "origin"
+    git_remote *remote = nullptr;
+    error = git_remote_lookup(&remote, repo, "origin");
+    if (error != 0) {
+        git_repository_free(repo);
+        throw std::runtime_error("No origin remote found");
+    }
+
+    // Get current branch
+    git_reference *head_ref = nullptr;
+    git_repository_head(&head_ref, repo);
+    const char *branch_name = git_reference_shorthand(head_ref);
+
+    // Push options
+    git_push_options push_opts = GIT_PUSH_OPTIONS_INIT;
+    progress_data pd = {0, 0, 0, 0};
+    push_opts.callbacks.pack_progress = pack_progress_cb;
+    push_opts.callbacks.transfer_progress = transfer_progress_cb;
+    push_opts.callbacks.payload = &pd;
+
+    // Refspecs
+    git_strarray refspecs = {0};
+    std::string refspec = std::string("refs/heads/") + branch_name + ":refs/heads/" + branch_name;
+    char *refspec_ptr = strdup(refspec.c_str());
+    refspecs.strings = &refspec_ptr;
+    refspecs.count = 1;
+
+    error = git_remote_push(remote, &refspecs, &push_opts);
+
+    free(refspec_ptr);
+    git_reference_free(head_ref);
+    git_remote_free(remote);
+    git_repository_free(repo);
+
+    std::cout << std::endl;
+
+    if (error != 0) {
+        throw std::runtime_error("Push failed");
+    }
 }

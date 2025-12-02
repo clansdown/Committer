@@ -18,4 +18,5 @@ public:
     static void add_files(const std::vector<std::string>& files);
     static void commit(const std::string& message);
     static std::pair<std::string, std::string> commit_with_output(const std::string& message);
+    static void push();
 };
