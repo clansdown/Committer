@@ -372,13 +372,33 @@ void GitUtils::push() {
     error = git_remote_lookup(&remote, repo, "origin");
     if (error != 0) {
         git_repository_free(repo);
-        throw std::runtime_error("No origin remote found");
+        const git_error *err = git_error_last();
+        std::string msg = "No 'origin' remote found";
+        if (err) msg += ": " + std::string(err->message);
+        msg += "\nSuggestion: Add a remote with 'git remote add origin <url>'";
+        throw std::runtime_error(msg);
     }
+
+    // Get remote URL for diagnostics
+    const char *remote_url = git_remote_url(remote);
 
     // Get current branch
     git_reference *head_ref = nullptr;
     git_repository_head(&head_ref, repo);
     const char *branch_name = git_reference_shorthand(head_ref);
+
+    // Check if branch has upstream
+    git_reference *upstream_ref = nullptr;
+    error = git_branch_upstream(&upstream_ref, head_ref);
+    if (error != 0) {
+        git_reference_free(head_ref);
+        git_remote_free(remote);
+        git_repository_free(repo);
+        std::string msg = "Current branch '" + std::string(branch_name) + "' has no upstream tracking branch";
+        msg += "\nSuggestion: Set upstream with 'git branch --set-upstream-to=origin/" + std::string(branch_name) + "'";
+        throw std::runtime_error(msg);
+    }
+    git_reference_free(upstream_ref);
 
     // Push options
     git_push_options push_opts = GIT_PUSH_OPTIONS_INIT;
@@ -404,6 +424,21 @@ void GitUtils::push() {
     std::cout << std::endl;
 
     if (error != 0) {
-        throw std::runtime_error("Push failed");
+        const git_error *err = git_error_last();
+        std::string msg = "Push failed";
+        if (err) {
+            msg += ": " + std::string(err->message);
+        }
+        msg += "\nRemote: " + std::string(remote_url ? remote_url : "unknown");
+        msg += "\nBranch: " + std::string(branch_name);
+        // Add suggestions based on common errors
+        if (err && std::string(err->message).find("authentication") != std::string::npos) {
+            msg += "\nSuggestion: Check your credentials or SSH key configuration";
+        } else if (err && std::string(err->message).find("network") != std::string::npos) {
+            msg += "\nSuggestion: Verify internet connection and remote URL";
+        } else {
+            msg += "\nSuggestion: Ensure you have push permissions and the remote is accessible";
+        }
+        throw std::runtime_error(msg);
     }
 }
