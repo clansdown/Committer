@@ -359,6 +359,37 @@ int transfer_progress_cb(const git_transfer_progress *stats, void *payload) {
     return 0;
 }
 
+int credentials_cb(git_credential **out, const char *url, const char *username_from_url, unsigned int allowed_types, void *payload) {
+    std::string username = username_from_url ? username_from_url : "";
+    
+    // Fallback to Git config username if not provided or generic
+    if (username.empty() || username == "git") {
+        git_config *cfg = nullptr;
+        git_config_open_default(&cfg);
+        if (cfg) {
+            const char *config_username = nullptr;
+            if (git_config_get_string(&config_username, cfg, "user.name") == 0) {
+                username = config_username;
+            }
+            git_config_free(cfg);
+        }
+    }
+    
+    if (allowed_types & GIT_CREDENTIAL_SSH_KEY) {
+        // Try SSH agent first
+        if (git_credential_ssh_key_from_agent(out, username.c_str()) == 0) {
+            return 0;
+        }
+        
+        // Try default SSH key locations
+        if (git_credential_ssh_key_new(out, username.c_str(), nullptr, nullptr, nullptr) == 0) {
+            return 0;
+        }
+    }
+    
+    return -1;
+}
+
 void GitUtils::push() {
     git_libgit2_init();
     git_repository *repo = nullptr;
@@ -405,6 +436,7 @@ void GitUtils::push() {
     progress_data pd = {0, 0, 0, 0};
     push_opts.callbacks.pack_progress = pack_progress_cb;
     push_opts.callbacks.transfer_progress = transfer_progress_cb;
+    push_opts.callbacks.credentials = credentials_cb;
     push_opts.callbacks.payload = &pd;
 
     // Refspecs
