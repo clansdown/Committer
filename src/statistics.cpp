@@ -146,8 +146,8 @@ void summarize_generation_stats(const std::string& log_path) {
     }
 }
 
-TimingGuard::TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, bool dry_run)
-    : enabled_(enabled), config_(config), generations_(generations), llm_(llm), dry_run_(dry_run), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
+TimingGuard::TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, const std::string& repo_root, bool dry_run)
+    : enabled_(enabled), config_(config), generations_(generations), llm_(llm), repo_root_(repo_root), dry_run_(dry_run), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
 
 void TimingGuard::set_llm_time(long long ms) { llm_ms_ = ms; }
 
@@ -180,9 +180,8 @@ TimingGuard::~TimingGuard() {
         std::string xdg_data_path = get_xdg_data_path() + "/generation_stats.log";
         log_generation_stats(stats_list, xdg_data_path);
 
-        std::string repo_root = GitUtils::get_repo_root();
-        if (!repo_root.empty()) {
-            std::string repo_log_path = repo_root + "/.commit/generation_stats.log";
+        if (!repo_root_.empty()) {
+            std::string repo_log_path = repo_root_ + "/.commit/generation_stats.log";
             log_generation_stats(stats_list, repo_log_path);
         }
     }

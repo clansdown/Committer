@@ -139,11 +139,14 @@ int main(int argc, char** argv) {
 
     CLI11_PARSE(app, argc, argv);
 
+    GitRepository repo;
+    GitUtils git_utils(repo);
+
     if (summary || global_summary) {
         if (summary) {
-            std::string repo_root = GitUtils::get_repo_root();
+            std::string repo_root = repo.get_repo_root();
             if (!repo_root.empty()) {
-                std::string repo_log_path = repo_root + "/.commit/generation_stats.log";
+                std::string repo_log_path = repo.get_commit_dir() + "generation_stats.log";
                 summarize_generation_stats(repo_log_path);
             } else {
                 std::cout << "Not in a git repository" << std::endl;
@@ -191,7 +194,7 @@ int main(int argc, char** argv) {
     // else: keep config.time_run as loaded from file
 
     // Check and update .gitignore early
-    std::string repo_root = GitUtils::get_repo_root();
+    std::string repo_root = repo.get_repo_root();
     check_and_add_commit_to_gitignore(repo_root);
 
     char* env_openrouter = getenv("OPENROUTER_API_KEY");
@@ -244,7 +247,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         llm->set_api_key(api_key);
-        TimingGuard guard(config.time_run, config, generations, llm, dry_run);
+        TimingGuard guard(config.time_run, config, generations, llm, repo.get_repo_root(), dry_run);
         if (list_models) {
             auto start_llm = std::chrono::high_resolution_clock::now();
             auto models = llm->get_available_models();
@@ -268,11 +271,11 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    auto tracked_modified = GitUtils::get_tracked_modified_files();
-    auto unstaged_modified = GitUtils::get_unstaged_files();
+    auto tracked_modified = git_utils.get_tracked_modified_files();
+    auto unstaged_modified = git_utils.get_unstaged_files();
     bool should_add_untracked = add_files;
     if (!no_add && !add_files) {
-        auto untracked = GitUtils::get_untracked_files();
+        auto untracked = git_utils.get_untracked_files();
         if (!untracked.empty()) {
             std::cout << Colors::GREEN << "Untracked files:" << Colors::RESET << "\n";
             for (const auto& f : untracked) {
@@ -288,11 +291,11 @@ int main(int argc, char** argv) {
     std::vector<std::string> files_to_add = tracked_modified;
     files_to_add.insert(files_to_add.end(), unstaged_modified.begin(), unstaged_modified.end());
     if (should_add_untracked) {
-        auto untracked = GitUtils::get_untracked_files();
+        auto untracked = git_utils.get_untracked_files();
         files_to_add.insert(files_to_add.end(), untracked.begin(), untracked.end());
     }
 
-    std::string diff = GitUtils::get_full_diff();
+    std::string diff = git_utils.get_full_diff();
     if (diff.empty()) {
         std::cout << "No changes to commit\n";
         return 0;
@@ -309,7 +312,7 @@ int main(int argc, char** argv) {
     }
     llm->set_api_key(api_key);
 
-    TimingGuard guard(config.time_run, config, generations, llm, dry_run);
+    TimingGuard guard(config.time_run, config, generations, llm, repo.get_repo_root(), dry_run);
 
     GenerationResult generation_result;
     {
@@ -335,8 +338,8 @@ int main(int argc, char** argv) {
         std::cout << commit_msg << std::endl;
     } else {
         try {
-            GitUtils::add_files(files_to_add);
-            auto [hash, output] = GitUtils::commit_with_output(commit_msg);
+            git_utils.add_files(files_to_add);
+            auto [hash, output] = git_utils.commit_with_output(commit_msg);
             std::cout << std::endl;
             if (!hash.empty()) {
                 std::cout << Colors::BLUE << hash << Colors::RESET << " ";
@@ -351,7 +354,7 @@ int main(int argc, char** argv) {
 
     if (!dry_run && config.auto_push) {
         try {
-            GitUtils::push();
+            git_utils.push();
             std::cout << Colors::GREEN << "Changes pushed upstream successfully." << Colors::RESET << std::endl;
         } catch (const std::runtime_error& e) {
             std::cerr << "Failed to push: " << e.what() << std::endl;

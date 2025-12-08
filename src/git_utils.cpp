@@ -1,4 +1,5 @@
 #include "git_utils.hpp"
+#include "git_utils.hpp"
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -10,6 +11,40 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <git2.h>
+
+GitRepository::GitRepository() : repo_(nullptr) {
+    git_libgit2_init();
+    git_buf buf = {0};
+    int error = git_repository_discover(&buf, ".", 0, nullptr);
+    if (error != 0) {
+        throw std::runtime_error("Not in a git repository");
+    }
+    std::string git_dir = buf.ptr;
+    git_buf_dispose(&buf);
+
+    error = git_repository_open(&repo_, git_dir.c_str());
+    if (error != 0) {
+        throw std::runtime_error("Failed to open git repository");
+    }
+
+    const char* workdir = git_repository_workdir(repo_);
+    if (!workdir) {
+        git_repository_free(repo_);
+        repo_ = nullptr;
+        throw std::runtime_error("Repository has no working directory");
+    }
+    repo_root_ = workdir;
+    commit_dir_ = repo_root_ + "/.commit/";
+}
+
+GitRepository::~GitRepository() {
+    if (repo_) {
+        git_repository_free(repo_);
+        repo_ = nullptr;
+    }
+}
+
+GitUtils::GitUtils(GitRepository& repo) : repo_(repo) {}
 
 bool GitUtils::is_git_repo() {
     git_libgit2_init();
@@ -37,14 +72,9 @@ std::string GitUtils::get_repo_root() {
 }
 
 std::string GitUtils::get_diff(bool cached) {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_diff *diff = nullptr;
+    int error;
     if (cached) {
         // index vs HEAD
         git_index *index = nullptr;
@@ -65,7 +95,6 @@ std::string GitUtils::get_diff(bool cached) {
         error = git_diff_index_to_workdir(&diff, repo, nullptr, nullptr);
     }
     if (error != 0) {
-        git_repository_free(repo);
         throw std::runtime_error("Failed to create diff");
     }
 
@@ -74,18 +103,11 @@ std::string GitUtils::get_diff(bool cached) {
     std::string result = buf.ptr ? buf.ptr : "";
     git_buf_dispose(&buf);
     git_diff_free(diff);
-    git_repository_free(repo);
     return result;
 }
 
 std::string GitUtils::get_full_diff() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_tree *head_tree = nullptr;
     git_reference *head_ref = nullptr;
     git_repository_head(&head_ref, repo);
@@ -94,12 +116,11 @@ std::string GitUtils::get_full_diff() {
     git_commit_tree(&head_tree, head_commit);
 
     git_diff *diff = nullptr;
-    error = git_diff_tree_to_workdir(&diff, repo, head_tree, nullptr);
+    int error = git_diff_tree_to_workdir(&diff, repo, head_tree, nullptr);
     if (error != 0) {
         git_tree_free(head_tree);
         git_commit_free(head_commit);
         git_reference_free(head_ref);
-        git_repository_free(repo);
         throw std::runtime_error("Failed to create diff");
     }
 
@@ -111,22 +132,14 @@ std::string GitUtils::get_full_diff() {
     git_tree_free(head_tree);
     git_commit_free(head_commit);
     git_reference_free(head_ref);
-    git_repository_free(repo);
     return result;
 }
 
 std::vector<std::string> GitUtils::get_unstaged_files() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_status_list *status_list = nullptr;
-    error = git_status_list_new(&status_list, repo, nullptr);
+    int error = git_status_list_new(&status_list, repo, nullptr);
     if (error != 0) {
-        git_repository_free(repo);
         throw std::runtime_error("Failed to get status");
     }
 
@@ -139,22 +152,14 @@ std::vector<std::string> GitUtils::get_unstaged_files() {
         }
     }
     git_status_list_free(status_list);
-    git_repository_free(repo);
     return files;
 }
 
 std::vector<std::string> GitUtils::get_tracked_modified_files() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_status_list *status_list = nullptr;
-    error = git_status_list_new(&status_list, repo, nullptr);
+    int error = git_status_list_new(&status_list, repo, nullptr);
     if (error != 0) {
-        git_repository_free(repo);
         throw std::runtime_error("Failed to get status");
     }
 
@@ -167,22 +172,14 @@ std::vector<std::string> GitUtils::get_tracked_modified_files() {
         }
     }
     git_status_list_free(status_list);
-    git_repository_free(repo);
     return files;
 }
 
 std::vector<std::string> GitUtils::get_untracked_files() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_status_list *status_list = nullptr;
-    error = git_status_list_new(&status_list, repo, nullptr);
+    int error = git_status_list_new(&status_list, repo, nullptr);
     if (error != 0) {
-        git_repository_free(repo);
         throw std::runtime_error("Failed to get status");
     }
 
@@ -195,63 +192,40 @@ std::vector<std::string> GitUtils::get_untracked_files() {
         }
     }
     git_status_list_free(status_list);
-    git_repository_free(repo);
     return files;
 }
 
 void GitUtils::add_files() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_index *index = nullptr;
     git_repository_index(&index, repo);
-    error = git_index_add_all(index, nullptr, 0, nullptr, nullptr);
+    int error = git_index_add_all(index, nullptr, 0, nullptr, nullptr);
     if (error != 0) {
         git_index_free(index);
-        git_repository_free(repo);
         throw std::runtime_error("Failed to add files");
     }
     git_index_write(index);
     git_index_free(index);
-    git_repository_free(repo);
 }
 
 void GitUtils::add_files(const std::vector<std::string>& files) {
     if (files.empty()) return;
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_index *index = nullptr;
     git_repository_index(&index, repo);
     for (const auto& file : files) {
-        error = git_index_add_bypath(index, file.c_str());
+        int error = git_index_add_bypath(index, file.c_str());
         if (error != 0) {
             git_index_free(index);
-            git_repository_free(repo);
             throw std::runtime_error("Failed to add file: " + file);
         }
     }
     git_index_write(index);
     git_index_free(index);
-    git_repository_free(repo);
 }
 
 void GitUtils::commit(const std::string& message) {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_index *index = nullptr;
     git_repository_index(&index, repo);
     git_oid tree_oid;
@@ -270,13 +244,12 @@ void GitUtils::commit(const std::string& message) {
     git_signature_default(&author, repo);
 
     git_oid commit_oid;
-    error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
+    int error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
     if (error != 0) {
         git_signature_free(author);
         git_commit_free(parent_commit);
         git_reference_free(head_ref);
         git_tree_free(tree);
-        git_repository_free(repo);
         throw std::runtime_error("Git commit failed");
     }
 
@@ -284,17 +257,10 @@ void GitUtils::commit(const std::string& message) {
     git_commit_free(parent_commit);
     git_reference_free(head_ref);
     git_tree_free(tree);
-    git_repository_free(repo);
 }
 
 std::pair<std::string, std::string> GitUtils::commit_with_output(const std::string& message) {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     git_index *index = nullptr;
     git_repository_index(&index, repo);
     git_oid tree_oid;
@@ -313,13 +279,12 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
     git_signature_default(&author, repo);
 
     git_oid commit_oid;
-    error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
+    int error = git_commit_create(&commit_oid, repo, "HEAD", author, author, "UTF-8", message.c_str(), tree, 1, parents);
     if (error != 0) {
         git_signature_free(author);
         git_commit_free(parent_commit);
         git_reference_free(head_ref);
         git_tree_free(tree);
-        git_repository_free(repo);
         throw std::runtime_error("Git commit failed");
     }
 
@@ -332,7 +297,6 @@ std::pair<std::string, std::string> GitUtils::commit_with_output(const std::stri
     git_commit_free(parent_commit);
     git_reference_free(head_ref);
     git_tree_free(tree);
-    git_repository_free(repo);
     return {hash, output};
 }
 
@@ -391,18 +355,11 @@ int credentials_cb(git_credential **out, const char *url, const char *username_f
 }
 
 void GitUtils::push() {
-    git_libgit2_init();
-    git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
-    if (error != 0) {
-        throw std::runtime_error("Failed to open repository");
-    }
-
+    git_repository* repo = repo_.get_repo();
     // Find remote "origin"
     git_remote *remote = nullptr;
-    error = git_remote_lookup(&remote, repo, "origin");
+    int error = git_remote_lookup(&remote, repo, "origin");
     if (error != 0) {
-        git_repository_free(repo);
         const git_error *err = git_error_last();
         std::string msg = "No 'origin' remote found";
         if (err) msg += ": " + std::string(err->message);
@@ -424,7 +381,6 @@ void GitUtils::push() {
     if (error != 0) {
         git_reference_free(head_ref);
         git_remote_free(remote);
-        git_repository_free(repo);
         std::string msg = "Current branch '" + std::string(branch_name) + "' has no upstream tracking branch";
         msg += "\nSuggestion: Set upstream with 'git branch --set-upstream-to=origin/" + std::string(branch_name) + "'";
         throw std::runtime_error(msg);
@@ -451,7 +407,6 @@ void GitUtils::push() {
     free(refspec_ptr);
     git_reference_free(head_ref);
     git_remote_free(remote);
-    git_repository_free(repo);
 
     std::cout << std::endl;
 
