@@ -84,7 +84,7 @@ Config Config::load_from_file(const std::string& global_path) {
     // Load local config if exists
     std::string repo_root = GitUtils::get_repo_root();
     if (!repo_root.empty()) {
-        std::string local_path = repo_root + "/.commit.conf";
+        std::string local_path = repo_root + "/.commit/config.txt";
         auto local_values = parse_config_file(local_path);
         // Override with local values
         if (local_values.count("backend")) config.backend = local_values["backend"];
