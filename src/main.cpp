@@ -357,7 +357,14 @@ int main(int argc, char** argv) {
             git_utils.push();
             std::cout << Colors::GREEN << "Changes pushed upstream successfully." << Colors::RESET << std::endl;
         } catch (const std::runtime_error& e) {
-            std::cerr << "Failed to push: " << e.what() << std::endl;
+            std::string error_msg = e.what();
+            std::cout << Colors::YELLOW << "Warning: Failed to push changes upstream: " << error_msg << Colors::RESET << std::endl;
+            // Check for upstream change indicators
+            if (error_msg.find("non-fast-forward") != std::string::npos ||
+                error_msg.find("updates were rejected") != std::string::npos ||
+                error_msg.find("fetch first") != std::string::npos) {
+                std::cout << Colors::YELLOW << "Suggestion: Pull upstream changes with 'git pull' before pushing." << Colors::RESET << std::endl;
+            }
         }
     }
 
