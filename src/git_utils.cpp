@@ -107,32 +107,9 @@ std::string GitUtils::get_diff(bool cached) {
 }
 
 std::string GitUtils::get_full_diff() {
-    git_repository* repo = repo_.get_repo();
-    git_tree *head_tree = nullptr;
-    git_reference *head_ref = nullptr;
-    git_repository_head(&head_ref, repo);
-    git_commit *head_commit = nullptr;
-    git_reference_peel((git_object **)&head_commit, head_ref, GIT_OBJECT_COMMIT);
-    git_commit_tree(&head_tree, head_commit);
-
-    git_diff *diff = nullptr;
-    int error = git_diff_tree_to_workdir(&diff, repo, head_tree, nullptr);
-    if (error != 0) {
-        git_tree_free(head_tree);
-        git_commit_free(head_commit);
-        git_reference_free(head_ref);
-        throw std::runtime_error("Failed to create diff");
-    }
-
-    git_buf buf = {0};
-    error = git_diff_to_buf(&buf, diff, GIT_DIFF_FORMAT_PATCH);
-    std::string result = buf.ptr ? buf.ptr : "";
-    git_buf_dispose(&buf);
-    git_diff_free(diff);
-    git_tree_free(head_tree);
-    git_commit_free(head_commit);
-    git_reference_free(head_ref);
-    return result;
+    std::string staged = get_diff(true);
+    std::string unstaged = get_diff(false);
+    return staged + unstaged;
 }
 
 std::vector<std::string> GitUtils::get_unstaged_files() {

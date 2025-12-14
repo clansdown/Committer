@@ -13,6 +13,7 @@
 #include <vector>
 #include <optional>
 #include <map>
+#include <algorithm>
 #include "git_utils.hpp"
 #include "config.hpp"
 #include "llm_backend.hpp"
@@ -273,9 +274,10 @@ int main(int argc, char** argv) {
 
     auto tracked_modified = git_utils.get_tracked_modified_files();
     auto unstaged_modified = git_utils.get_unstaged_files();
+    std::vector<std::string> untracked;
     bool should_add_untracked = add_files;
     if (!no_add && !add_files) {
-        auto untracked = git_utils.get_untracked_files();
+        untracked = git_utils.get_untracked_files();
         if (!untracked.empty()) {
             std::cout << Colors::GREEN << "Untracked files:" << Colors::RESET << "\n";
             for (const auto& f : untracked) {
@@ -291,11 +293,35 @@ int main(int argc, char** argv) {
     std::vector<std::string> files_to_add = tracked_modified;
     files_to_add.insert(files_to_add.end(), unstaged_modified.begin(), unstaged_modified.end());
     if (should_add_untracked) {
-        auto untracked = git_utils.get_untracked_files();
         files_to_add.insert(files_to_add.end(), untracked.begin(), untracked.end());
     }
 
     std::string diff = git_utils.get_full_diff();
+    // Append diffs for untracked files to be added
+    for (const auto& file : files_to_add) {
+        if (std::find(untracked.begin(), untracked.end(), file) != untracked.end()) {
+            std::ifstream file_stream(file);
+            if (!file_stream) continue;
+            std::stringstream content;
+            content << file_stream.rdbuf();
+            std::string file_content = content.str();
+            size_t line_count = std::count(file_content.begin(), file_content.end(), '\n') + (file_content.empty() ? 0 : 1);
+            diff += "diff --git a/" + file + " b/" + file + "\n";
+            diff += "new file mode 100644\n";
+            diff += "index 0000000..e69de29\n";
+            diff += "--- /dev/null\n";
+            diff += "+++ b/" + file + "\n";
+            diff += "@@ -0,0 +1," + std::to_string(line_count) + " @@\n";
+            std::istringstream iss(file_content);
+            std::string line;
+            while (std::getline(iss, line)) {
+                diff += "+" + line + "\n";
+            }
+            if (!file_content.empty() && file_content.back() != '\n') {
+                diff += "\n\\ No newline at end of file\n";
+            }
+        }
+    }
     if (diff.empty() && files_to_add.empty()) {
         std::cout << "No changes to commit\n";
         return 0;
