@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
     }
 
     std::string diff = git_utils.get_full_diff();
-    if (diff.empty()) {
+    if (diff.empty() && files_to_add.empty()) {
         std::cout << "No changes to commit\n";
         return 0;
     }
