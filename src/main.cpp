@@ -101,6 +101,37 @@ std::string get_config_path() {
     return config_dir + "/commit/config.txt";
 }
 
+std::vector<std::string> get_config_files(const std::string& config_path) {
+    std::string repo_root = GitUtils::get_repo_root();
+    std::vector<std::string> config_files;
+
+    // Check global config
+    if (std::filesystem::exists(config_path)) {
+        config_files.push_back(config_path);
+    }
+
+    // Check global prompt
+    std::string global_prompt = std::filesystem::path(config_path).parent_path().string() + "/prompt.txt";
+    if (std::filesystem::exists(global_prompt)) {
+        config_files.push_back(global_prompt);
+    }
+
+    // Check local configs if in repo
+    if (!repo_root.empty()) {
+        std::string local_config = repo_root + "/.commit/config.txt";
+        if (std::filesystem::exists(local_config)) {
+            config_files.push_back(local_config);
+        }
+
+        std::string local_prompt = repo_root + "/.commit/prompt.txt";
+        if (std::filesystem::exists(local_prompt)) {
+            config_files.push_back(local_prompt);
+        }
+    }
+
+    return config_files;
+}
+
 int main(int argc, char** argv) {
     CLI::App app{"commit - Generate commit messages using LLM"};
 
@@ -114,6 +145,7 @@ int main(int argc, char** argv) {
     bool summary = false;
     bool global_summary = false;
     bool push_flag = false;
+    bool list_configs = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -132,6 +164,7 @@ int main(int argc, char** argv) {
     app.add_flag("--summary", summary, "Show summary of generation costs from the local git repository");
     app.add_flag("--global-summary", global_summary, "Show summary of generation costs from the global log");
     app.add_flag("--push", push_flag, "Automatically push commits upstream after successful commit");
+    app.add_flag("--list-configs", list_configs, "List all config files being read");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
@@ -139,6 +172,15 @@ int main(int argc, char** argv) {
     app.add_option("--temperature", temperature, "Temperature for chat generation (0.0-2.0)");
 
     CLI11_PARSE(app, argc, argv);
+
+    if (list_configs) {
+        auto config_files = get_config_files(config_path);
+        std::cout << "Config files being read:" << std::endl;
+        for (const auto& file : config_files) {
+            std::cout << "  " << file << std::endl;
+        }
+        return 0;
+    }
 
     GitRepository repo;
     GitUtils git_utils(repo);
