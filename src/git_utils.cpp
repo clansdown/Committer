@@ -1,5 +1,4 @@
 #include "git_utils.hpp"
-#include "git_utils.hpp"
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -8,21 +7,22 @@
 #include <array>
 #include <vector>
 #include <cstring>
+#include "git_utils.hpp"
 #include <unistd.h>
 #include <sys/wait.h>
 #include <git2.h>
 
+std::string GitUtils::cached_repo_root_;
+std::string GitUtils::cached_git_dir_;
+
 GitRepository::GitRepository() : repo_(nullptr) {
-    git_libgit2_init();
-    git_buf buf = {0};
-    int error = git_repository_discover(&buf, ".", 0, nullptr);
-    if (error != 0) {
+    std::string repo_root = GitUtils::get_repo_root();
+    if (repo_root.empty()) {
         throw std::runtime_error("Not in a git repository");
     }
-    std::string git_dir = buf.ptr;
-    git_buf_dispose(&buf);
+    std::string git_dir = GitUtils::get_cached_git_dir();
 
-    error = git_repository_open(&repo_, git_dir.c_str());
+    int error = git_repository_open(&repo_, git_dir.c_str());
     if (error != 0) {
         throw std::runtime_error("Failed to open git repository");
     }
@@ -59,16 +59,32 @@ bool GitUtils::is_git_repo() {
 }
 
 std::string GitUtils::get_repo_root() {
+    if (!cached_repo_root_.empty()) return cached_repo_root_;
+
     git_libgit2_init();
+    git_buf buf = {0};
+    int error = git_repository_discover(&buf, ".", 0, nullptr);
+    if (error != 0) {
+        git_buf_dispose(&buf);
+        return "";
+    }
+    std::string git_dir = buf.ptr;
+    cached_git_dir_ = git_dir;
+    git_buf_dispose(&buf);
+
     git_repository *repo = nullptr;
-    int error = git_repository_open(&repo, ".");
+    error = git_repository_open(&repo, git_dir.c_str());
     if (error != 0) {
         return "";
     }
     const char *workdir = git_repository_workdir(repo);
-    std::string result = workdir ? workdir : "";
+    cached_repo_root_ = workdir ? workdir : "";
     git_repository_free(repo);
-    return result;
+    return cached_repo_root_;
+}
+
+std::string GitUtils::get_cached_git_dir() {
+    return cached_git_dir_;
 }
 
 std::string GitUtils::get_diff(bool cached) {

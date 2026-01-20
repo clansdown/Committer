@@ -23,6 +23,7 @@ public:
     GitUtils(GitRepository& repo);
     static bool is_git_repo();
     static std::string get_repo_root();
+    static std::string get_cached_git_dir();
     std::string get_diff(bool cached = true);
     std::string get_full_diff();
     std::vector<std::string> get_unstaged_files();
@@ -34,5 +35,7 @@ public:
     std::pair<std::string, std::string> commit_with_output(const std::string& message);
     void push();
 private:
+    static std::string cached_repo_root_;
+    static std::string cached_git_dir_;
     GitRepository& repo_;
 };
