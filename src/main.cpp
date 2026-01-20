@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
     bool global_summary = false;
     bool push_flag = false;
     bool list_configs = false;
+    bool print_repo_root = false;
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
@@ -165,6 +166,7 @@ int main(int argc, char** argv) {
     app.add_flag("--global-summary", global_summary, "Show summary of generation costs from the global log");
     app.add_flag("--push", push_flag, "Automatically push commits upstream after successful commit");
     app.add_flag("--list-configs", list_configs, "List all config files being read");
+    app.add_flag("--repo-root", print_repo_root, "Print the git repository root directory");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
     app.add_option("-m,--model", model, "LLM model to use");
@@ -180,6 +182,17 @@ int main(int argc, char** argv) {
             std::cout << "  " << file << std::endl;
         }
         return 0;
+    }
+
+    if (print_repo_root) {
+        std::string repo_root = GitUtils::get_repo_root();
+        if (repo_root.empty()) {
+            std::cout << "Not in a git repository" << std::endl;
+            return 1;
+        } else {
+            std::cout << repo_root << std::endl;
+            return 0;
+        }
     }
 
     GitRepository repo;
