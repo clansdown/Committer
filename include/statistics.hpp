@@ -17,7 +17,7 @@ void summarize_generation_stats(const std::string& log_path);
 
 class TimingGuard {
 public:
-    TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, const std::string& repo_root, bool dry_run = false);
+    TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, const std::string& repo_root, bool dry_run = false, bool llm_generated = true);
     void set_llm_time(long long ms);
     ~TimingGuard();
 private:
@@ -27,6 +27,7 @@ private:
     std::unique_ptr<LLMBackend>& llm_;
     std::string repo_root_;
     bool dry_run_;
+    bool llm_generated_;
     std::chrono::high_resolution_clock::time_point start_;
     long long llm_ms_;
 };

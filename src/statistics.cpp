@@ -146,14 +146,14 @@ void summarize_generation_stats(const std::string& log_path) {
     }
 }
 
-TimingGuard::TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, const std::string& repo_root, bool dry_run)
-    : enabled_(enabled), config_(config), generations_(generations), llm_(llm), repo_root_(repo_root), dry_run_(dry_run), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
+TimingGuard::TimingGuard(bool enabled, const Config& config, const std::vector<GenerationResult>& generations, std::unique_ptr<LLMBackend>& llm, const std::string& repo_root, bool dry_run, bool llm_generated)
+    : enabled_(enabled), config_(config), generations_(generations), llm_(llm), repo_root_(repo_root), dry_run_(dry_run), llm_generated_(llm_generated), start_(std::chrono::high_resolution_clock::now()), llm_ms_(-1) {}
 
 void TimingGuard::set_llm_time(long long ms) { llm_ms_ = ms; }
 
 TimingGuard::~TimingGuard() {
-    // Query and log generation stats (backend-agnostic) - ALWAYS runs
-    if (!generations_.empty()) {
+    // Query and log generation stats (backend-agnostic) - only when LLM was actually used
+    if (llm_generated_ && !generations_.empty()) {
         std::vector<GenerationStats> stats_list;
         for (const auto& gen : generations_) {
             GenerationStats stats;
@@ -187,14 +187,6 @@ TimingGuard::~TimingGuard() {
     }
 
     if (enabled_) {
-        std::cout << "\033[34mModel: " << config_.model;
-        if (!config_.provider.empty()) {
-            std::cout << " (provider: " << config_.provider << ")";
-        }
-        if (config_.temperature >= 0.0) {
-            std::cout << " temperature: " << config_.temperature;
-        }
-        std::cout << "\033[0m" << std::endl;
         auto end = std::chrono::high_resolution_clock::now();
         auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
         auto format_time = [](long long ms) {
@@ -203,6 +195,18 @@ TimingGuard::~TimingGuard() {
             std::stringstream ss; ss << std::fixed << std::setprecision(2) << sec << "s";
             return ss.str();
         };
+
+        if (llm_generated_ && !generations_.empty()) {
+            std::cout << "\033[34mModel: " << config_.model;
+            if (!config_.provider.empty()) {
+                std::cout << " (provider: " << config_.provider << ")";
+            }
+            if (config_.temperature >= 0.0) {
+                std::cout << " temperature: " << config_.temperature;
+            }
+            std::cout << "\033[0m" << std::endl;
+        }
+
         std::cout << "\033[34m" << "Total time: " << "\033[37;44m" << format_time(total_ms) << "\033[34;49m";
         if (llm_ms_ >= 0) {
             std::cout << " LLM query time: " << "\033[37;44m" << format_time(llm_ms_) << "\033[34;49m";

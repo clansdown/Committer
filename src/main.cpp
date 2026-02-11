@@ -150,6 +150,7 @@ int main(int argc, char** argv) {
     std::string backend = "openrouter";
     std::string config_path = get_config_path();
     std::string model = "";
+    std::string user_commit_message = "";
     std::string provider = "";
     double temperature = 0.35;
 
@@ -169,11 +170,19 @@ int main(int argc, char** argv) {
     app.add_flag("--repo-root", print_repo_root, "Print the git repository root directory");
     app.add_option("-b,--backend", backend, "LLM backend: openrouter or zen");
     app.add_option("--config", config_path, "Path to config file");
-    app.add_option("-m,--model", model, "LLM model to use");
+    app.add_option("--model", model, "LLM model to use");
+    app.add_option("-m,--message", user_commit_message, "Commit message (skips LLM generation)");
     app.add_option("--provider", provider, "Model provider to use");
     app.add_option("--temperature", temperature, "Temperature for chat generation (0.0-2.0)");
 
     CLI11_PARSE(app, argc, argv);
+
+    bool llm_generated = user_commit_message.empty();
+
+    if (!user_commit_message.empty() && (query_balance || list_models)) {
+        std::cerr << "Error: -m (manual message) cannot be used with --query-balance or --list-models" << std::endl;
+        return 1;
+    }
 
     if (list_configs) {
         auto config_files = get_config_files(config_path);
@@ -195,6 +204,63 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (llm_generated && (list_models || query_balance)) {
+        Config config = Config::load_from_file(config_path);
+
+        char* env_openrouter = getenv("OPENROUTER_API_KEY");
+        if (env_openrouter && strlen(env_openrouter) > 0) {
+            config.openrouter_api_key = env_openrouter;
+        }
+        char* env_zen = getenv("ZEN_API_KEY");
+        if (env_zen && strlen(env_zen) > 0) {
+            config.zen_api_key = env_zen;
+        }
+
+        std::string api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
+        if (api_key.empty()) {
+            std::cerr << "Error: API key not found. Please configure with --configure or set OPENROUTER_API_KEY / ZEN_API_KEY environment variable." << std::endl;
+            return 1;
+        }
+
+        std::unique_ptr<LLMBackend> llm;
+        if (backend == "openrouter") {
+            llm = std::make_unique<OpenRouterBackend>();
+        } else if (backend == "zen") {
+            llm = std::make_unique<ZenBackend>();
+        } else {
+            std::cerr << "Unknown backend\n";
+            return 1;
+        }
+        llm->set_api_key(api_key);
+
+        auto start_total = std::chrono::high_resolution_clock::now();
+        std::vector<GenerationResult> generations;
+        TimingGuard guard(config.time_run, config, generations, llm, "", dry_run, llm_generated);
+
+        if (list_models) {
+            auto start_llm = std::chrono::high_resolution_clock::now();
+            auto models = llm->get_available_models();
+            auto end_llm = std::chrono::high_resolution_clock::now();
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            guard.set_llm_time(llm_ms);
+            for (const auto& m : models) {
+                std::cout << "ID: " << m.id << "\n";
+                std::cout << "Name: " << m.name << "\n";
+                std::cout << "Pricing: " << m.pricing << "\n";
+                std::cout << "Description: " << m.description << "\n\n";
+            }
+        } else if (query_balance) {
+            auto start_llm = std::chrono::high_resolution_clock::now();
+            std::string balance = llm->get_balance();
+            auto end_llm = std::chrono::high_resolution_clock::now();
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            guard.set_llm_time(llm_ms);
+            std::cout << "Available balance: " << balance << std::endl;
+        }
+        return 0;
+    }
+
+    try {
     GitRepository repo;
     GitUtils git_utils(repo);
 
@@ -222,67 +288,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    try {
-        auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
-        std::string& config_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
-        if (!config_key.empty()) {
-            return;
-        }
-        std::cout << Colors::YELLOW << "Enter API key for " << backend << ": " << Colors::RESET;
-        std::cin >> config_key;
-        // save config
-        config.backend = backend;
-        std::filesystem::create_directories(std::filesystem::path(config_path).parent_path());
-        std::ofstream file(config_path);
-        file << "backend=" << config.backend << "\n";
-        file << "model=" << config.model << "\n";
-        file << "instructions=" << config.llm_instructions << "\n";
-        file << "auto_push=" << (config.auto_push ? "true" : "false") << "\n";
-        if (!config.openrouter_api_key.empty()) file << "openrouter_api_key=" << config.openrouter_api_key << "\n";
-        if (!config.zen_api_key.empty()) file << "zen_api_key=" << config.zen_api_key << "\n";
-    };
-
     Config config = Config::load_from_file(config_path);
 
     if (time_run) {
         config.time_run = true;
     }
-    // else: keep config.time_run as loaded from file
 
-    // Check and update .gitignore early
     std::string repo_root = repo.get_repo_root();
     check_and_add_commit_to_gitignore(repo_root);
-
-    char* env_openrouter = getenv("OPENROUTER_API_KEY");
-    if (env_openrouter && strlen(env_openrouter) > 0) {
-        config.openrouter_api_key = env_openrouter;
-    }
-    char* env_zen = getenv("ZEN_API_KEY");
-    if (env_zen && strlen(env_zen) > 0) {
-        config.zen_api_key = env_zen;
-    }
-
-    // Auto-select backend if default and only one has a key
-    if (backend == "openrouter" && config.openrouter_api_key.empty() && !config.zen_api_key.empty()) {
-        backend = "zen";
-    }
-
-    get_api_key(backend, config, config_path);
-    std::string api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
-
-    if (!model.empty()) {
-        config.model = model;
-    } else {
-        model = config.model;
-    }
-
-    if (!provider.empty()) {
-        config.provider = provider;
-    }
-
-    if (temperature != 0.35) {
-        config.temperature = temperature;
-    }
 
     if (push_flag) {
         config.auto_push = true;
@@ -292,40 +305,64 @@ int main(int argc, char** argv) {
 
     std::vector<GenerationResult> generations;
 
-    if (list_models || query_balance) {
-        std::unique_ptr<LLMBackend> llm;
-        if (backend == "openrouter") {
-            llm = std::make_unique<OpenRouterBackend>();
-        } else if (backend == "zen") {
-            llm = std::make_unique<ZenBackend>();
-        } else {
-            std::cerr << "Unknown backend\n";
+    if (llm_generated) {
+        auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
+            std::string& config_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
+            if (!config_key.empty()) {
+                return;
+            }
+            std::cout << Colors::YELLOW << "Enter API key for " << backend << ": " << Colors::RESET;
+            std::cin >> config_key;
+            config.backend = backend;
+            std::filesystem::create_directories(std::filesystem::path(config_path).parent_path());
+            std::ofstream file(config_path);
+            file << "backend=" << config.backend << "\n";
+            file << "model=" << config.model << "\n";
+            file << "instructions=" << config.llm_instructions << "\n";
+            file << "auto_push=" << (config.auto_push ? "true" : "false") << "\n";
+            if (!config.openrouter_api_key.empty()) file << "openrouter_api_key=" << config.openrouter_api_key << "\n";
+            if (!config.zen_api_key.empty()) file << "zen_api_key=" << config.zen_api_key << "\n";
+        };
+
+        std::string api_key;
+
+        try {
+            char* env_openrouter = getenv("OPENROUTER_API_KEY");
+            if (env_openrouter && strlen(env_openrouter) > 0) {
+                config.openrouter_api_key = env_openrouter;
+            }
+            char* env_zen = getenv("ZEN_API_KEY");
+            if (env_zen && strlen(env_zen) > 0) {
+                config.zen_api_key = env_zen;
+            }
+
+            if (backend == "openrouter" && config.openrouter_api_key.empty() && !config.zen_api_key.empty()) {
+                backend = "zen";
+            }
+
+            get_api_key(backend, config, config_path);
+            api_key = (backend == "openrouter") ? config.openrouter_api_key : config.zen_api_key;
+
+            if (!model.empty()) {
+                config.model = model;
+            } else {
+                model = config.model;
+            }
+
+            if (!provider.empty()) {
+                config.provider = provider;
+            }
+
+            if (temperature != 0.35) {
+                config.temperature = temperature;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return 1;
+        } catch (...) {
+            std::cerr << "Unknown error occurred" << std::endl;
             return 1;
         }
-        llm->set_api_key(api_key);
-        TimingGuard guard(config.time_run, config, generations, llm, repo.get_repo_root(), dry_run);
-        if (list_models) {
-            auto start_llm = std::chrono::high_resolution_clock::now();
-            auto models = llm->get_available_models();
-            auto end_llm = std::chrono::high_resolution_clock::now();
-            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
-            guard.set_llm_time(llm_ms);
-            for (const auto& m : models) {
-                std::cout << "ID: " << m.id << "\n";
-                std::cout << "Name: " << m.name << "\n";
-                std::cout << "Pricing: " << m.pricing << "\n";
-                std::cout << "Description: " << m.description << "\n\n";
-            }
-        } else if (query_balance) {
-            auto start_llm = std::chrono::high_resolution_clock::now();
-            std::string balance = llm->get_balance();
-            auto end_llm = std::chrono::high_resolution_clock::now();
-            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
-            guard.set_llm_time(llm_ms);
-            std::cout << "Available balance: " << balance << std::endl;
-        }
-        return 0;
-    }
 
     auto tracked_modified = git_utils.get_tracked_modified_files();
     auto unstaged_modified = git_utils.get_unstaged_files();
@@ -383,29 +420,36 @@ int main(int argc, char** argv) {
     }
 
     std::unique_ptr<LLMBackend> llm;
-    if (backend == "openrouter") {
-        llm = std::make_unique<OpenRouterBackend>();
-    } else if (backend == "zen") {
-        llm = std::make_unique<ZenBackend>();
+    if (llm_generated) {
+        if (backend == "openrouter") {
+            llm = std::make_unique<OpenRouterBackend>();
+        } else if (backend == "zen") {
+            llm = std::make_unique<ZenBackend>();
+        } else {
+            std::cerr << "Unknown backend\n";
+            return 1;
+        }
+        llm->set_api_key(api_key);
+    }
+
+    TimingGuard guard(config.time_run, config, generations, llm, repo.get_repo_root(), dry_run, llm_generated);
+
+    std::string commit_msg;
+    if (llm_generated) {
+        GenerationResult generation_result;
+        {
+            Spinner spinner("Generating commit message...");
+            auto start_llm = std::chrono::high_resolution_clock::now();
+            generation_result = llm->generate_commit_message(diff, config.llm_instructions, config.model, config.provider, config.temperature);
+            auto end_llm = std::chrono::high_resolution_clock::now();
+            auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
+            guard.set_llm_time(llm_ms);
+            generations.push_back(generation_result);
+        }
+        commit_msg = generation_result.content;
     } else {
-        std::cerr << "Unknown backend\n";
-        return 1;
+        commit_msg = user_commit_message;
     }
-    llm->set_api_key(api_key);
-
-    TimingGuard guard(config.time_run, config, generations, llm, repo.get_repo_root(), dry_run);
-
-    GenerationResult generation_result;
-    {
-        Spinner spinner("Generating commit message...");
-        auto start_llm = std::chrono::high_resolution_clock::now();
-        generation_result = llm->generate_commit_message(diff, config.llm_instructions, config.model, config.provider, config.temperature);
-        auto end_llm = std::chrono::high_resolution_clock::now();
-        auto llm_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_llm - start_llm).count();
-        guard.set_llm_time(llm_ms);
-        generations.push_back(generation_result);
-    }
-    std::string commit_msg = generation_result.content;
 
     if (dry_run) {
         std::cout << std::endl;
@@ -431,6 +475,7 @@ int main(int argc, char** argv) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
         }
+        }
     }
 
     if (!dry_run && config.auto_push) {
@@ -449,12 +494,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    return 0;
-    } catch (const std::exception& e) {
+    } catch (const std::runtime_error& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
-    } catch (...) {
-        std::cerr << "Unknown error occurred" << std::endl;
-        return 1;
     }
+
+    return 0;
 }
