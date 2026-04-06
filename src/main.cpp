@@ -304,6 +304,7 @@ int main(int argc, char** argv) {
     auto start_total = std::chrono::high_resolution_clock::now();
 
     std::vector<GenerationResult> generations;
+    std::string api_key;
 
     if (llm_generated) {
         auto get_api_key = [&](const std::string& backend, Config& config, const std::string& config_path) {
@@ -323,8 +324,6 @@ int main(int argc, char** argv) {
             if (!config.openrouter_api_key.empty()) file << "openrouter_api_key=" << config.openrouter_api_key << "\n";
             if (!config.zen_api_key.empty()) file << "zen_api_key=" << config.zen_api_key << "\n";
         };
-
-        std::string api_key;
 
         try {
             char* env_openrouter = getenv("OPENROUTER_API_KEY");
@@ -363,6 +362,7 @@ int main(int argc, char** argv) {
             std::cerr << "Unknown error occurred" << std::endl;
             return 1;
         }
+    }
 
     auto tracked_modified = git_utils.get_tracked_modified_files();
     auto unstaged_modified = git_utils.get_unstaged_files();
@@ -419,7 +419,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    std::unique_ptr<LLMBackend> llm;
+    std::unique_ptr<LLMBackend> llm = nullptr;
     if (llm_generated) {
         if (backend == "openrouter") {
             llm = std::make_unique<OpenRouterBackend>();
@@ -474,7 +474,6 @@ int main(int argc, char** argv) {
         } catch (const std::runtime_error& e) {
             std::cerr << "Error during commit process: " << e.what() << std::endl;
             return 1;
-        }
         }
     }
 
