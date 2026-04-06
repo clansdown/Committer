@@ -142,8 +142,9 @@ int main(int argc, char** argv) {
     bool dry_run = false;
     bool configure = false;
     bool time_run = false;
-    bool summary = false;
-    bool global_summary = false;
+    bool summarize_logs = false;
+    bool summarize_global_logs = false;
+    bool preview_mode = false;
     bool push_flag = false;
     bool list_configs = false;
     bool print_repo_root = false;
@@ -163,8 +164,9 @@ int main(int argc, char** argv) {
     app.add_flag("-q,--query-balance", query_balance, "Query available balance from the backend");
     app.add_flag("--configure", configure, "Configure the application interactively");
     app.add_flag("--time-run", time_run, "Time program execution and LLM query");
-    app.add_flag("--summary", summary, "Show summary of generation costs from the local git repository");
-    app.add_flag("--global-summary", global_summary, "Show summary of generation costs from the global log");
+    app.add_flag("-s,--summary", preview_mode, "Generate commit message without committing (auto-includes all untracked files)");
+    app.add_flag("--summarize-logs", summarize_logs, "Show summary of generation costs from the local git repository");
+    app.add_flag("--summarize-global-logs", summarize_global_logs, "Show summary of generation costs from the global log");
     app.add_flag("--push", push_flag, "Automatically push commits upstream after successful commit");
     app.add_flag("--list-configs", list_configs, "List all config files being read");
     app.add_flag("--repo-root", print_repo_root, "Print the git repository root directory");
@@ -264,8 +266,8 @@ int main(int argc, char** argv) {
     GitRepository repo;
     GitUtils git_utils(repo);
 
-    if (summary || global_summary) {
-        if (summary) {
+    if (summarize_logs || summarize_global_logs) {
+        if (summarize_logs) {
             std::string repo_root = repo.get_repo_root();
             if (!repo_root.empty()) {
                 std::string repo_log_path = repo.get_commit_dir() + "generation_stats.log";
@@ -274,7 +276,7 @@ int main(int argc, char** argv) {
                 std::cout << "Not in a git repository" << std::endl;
             }
         }
-        if (global_summary) {
+        if (summarize_global_logs) {
             std::string global_log_path = get_xdg_data_path() + "/generation_stats.log";
             summarize_generation_stats(global_log_path);
         }
@@ -367,8 +369,8 @@ int main(int argc, char** argv) {
     auto tracked_modified = git_utils.get_tracked_modified_files();
     auto unstaged_modified = git_utils.get_unstaged_files();
     std::vector<std::string> untracked;
-    bool should_add_untracked = add_files;
-    if (!no_add && !add_files) {
+    bool should_add_untracked = add_files || preview_mode;
+    if (!no_add && !add_files && !preview_mode) {
         untracked = git_utils.get_untracked_files();
         if (!untracked.empty()) {
             std::cout << Colors::GREEN << "Untracked files:" << Colors::RESET << "\n";
@@ -380,6 +382,8 @@ int main(int argc, char** argv) {
             std::getline(std::cin, response);
             should_add_untracked = response.empty() || (response.size() > 0 && (response[0] == 'y' || response[0] == 'Y'));
         }
+    } else if (preview_mode) {
+        untracked = git_utils.get_untracked_files();
     }
 
     std::vector<std::string> files_to_add = tracked_modified;
@@ -451,7 +455,17 @@ int main(int argc, char** argv) {
         commit_msg = user_commit_message;
     }
 
-    if (dry_run) {
+    if (preview_mode) {
+        std::cout << std::endl;
+        if (!files_to_add.empty()) {
+            std::cout << Colors::GREEN << "Files:" << Colors::RESET << std::endl;
+            for (const auto& f : files_to_add) {
+                std::cout << "  " << f << "\n";
+            }
+        }
+        std::cout << Colors::GREEN << "Commit message:" << Colors::RESET << std::endl;
+        std::cout << clean_commit_message(commit_msg) << std::endl;
+    } else if (dry_run) {
         std::cout << std::endl;
         if (!files_to_add.empty()) {
             std::cout << Colors::GREEN << "[DRY RUN] Would add files:" << Colors::RESET << std::endl;
@@ -477,7 +491,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!dry_run && config.auto_push) {
+    if (!preview_mode && !dry_run && config.auto_push) {
         try {
             git_utils.push();
             std::cout << Colors::GREEN << "Changes pushed upstream successfully." << Colors::RESET << std::endl;
